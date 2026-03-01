@@ -60,57 +60,30 @@ class MessageLog(QTextBrowser):
         local_time = created_at.astimezone()
         time_str = local_time.strftime("%H:%M")
 
-        bg_color = config.MSG_COLORS.get(msg_type)
         subtext = config.COLORS["subtext"]
         text_color = config.COLORS["text"]
 
         lines = content.split("\n")
-        first_line = _highlight_states(html.escape(lines[0]))
 
-        # 1行目: timestamp | text
-        rows = (
-            f'<tr>'
-            f'<td width="50" valign="top">'
-            f'<font color="{subtext}">{time_str}</font></td>'
-            f'<td valign="top"><font color="{text_color}">{first_line}</font></td>'
-            f'</tr>'
-        )
-
-        # 2行目以降: 空 | text (インデント揃え)
-        for line in lines[1:]:
+        rows = ""
+        for i, line in enumerate(lines):
             esc = _highlight_states(html.escape(line))
-            rows += (
-                f'<tr>'
-                f'<td width="50"></td>'
-                f'<td><font color="{text_color}">{esc}</font></td>'
-                f'</tr>'
-            )
+            if i == 0:
+                rows += (
+                    f'<tr>'
+                    f'<td width="42" valign="top"><font color="{subtext}" size="2">{time_str}</font></td>'
+                    f'<td valign="top"><font color="{text_color}">{esc}</font></td>'
+                    f'</tr>'
+                )
+            else:
+                rows += (
+                    f'<tr>'
+                    f'<td></td>'
+                    f'<td><font color="{text_color}">{esc}</font></td>'
+                    f'</tr>'
+                )
 
-        # bg_colorがある場合、左端にカラーセルを追加
-        if bg_color:
-            # 各行の先頭にカラーセル追加
-            rows_with_bar = ""
-            for i, line in enumerate(content.split("\n")):
-                esc = _highlight_states(html.escape(line))
-                if i == 0:
-                    rows_with_bar = (
-                        f'<tr>'
-                        f'<td width="4" bgcolor="{bg_color}" rowspan="{len(lines)}">&nbsp;</td>'
-                        f'<td width="50" valign="top">'
-                        f'<font color="{subtext}">{time_str}</font></td>'
-                        f'<td valign="top"><font color="{text_color}">{esc}</font></td>'
-                        f'</tr>'
-                    )
-                else:
-                    rows_with_bar += (
-                        f'<tr>'
-                        f'<td width="50"></td>'
-                        f'<td><font color="{text_color}">{esc}</font></td>'
-                        f'</tr>'
-                    )
-            rows = rows_with_bar
-
-        html_block = f'<table cellpadding="0" cellspacing="2" width="100%">{rows}</table>'
+        html_block = f'<table cellpadding="0" cellspacing="0" width="100%">{rows}</table>'
         self.append(html_block)
 
     def _on_scroll_value_changed(self, value: int):
