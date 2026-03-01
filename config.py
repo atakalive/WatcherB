@@ -14,7 +14,7 @@ HISTORY_LIMIT: int = 20  # 起動時に読み込む過去メッセージ件数
 WINDOW_TITLE: str = "WatcherB"
 WINDOW_WIDTH: int = 1000
 WINDOW_HEIGHT: int = 700
-LEFT_PANEL_WIDTH: int = 280
+LEFT_PANEL_WIDTH: int = 350
 
 # テーマ (Catppuccin Mocha ベース)
 COLORS = {
@@ -66,3 +66,6 @@ FONT_SIZE: int = 20          # メッセージログのフォントサイズ (px
 FONT_SIZE_TIMESTAMP: int = 18  # タイムスタンプのフォントサイズ (px)
 FONT_SIZE_STATUS: int = 20   # ステータスバーのフォントサイズ (px)
 LINE_HEIGHT: float = 2.3     # 行間 (倍率)
+
+# メッセージログ
+TIMESTAMP_WIDTH: int = 42         # タイムスタンプカラム幅 (px)
