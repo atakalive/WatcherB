@@ -1,6 +1,7 @@
 """WatcherB アプリケーション設定."""
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,11 +11,14 @@ DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
 CHANNEL_ID: int = 1474050582049329213  # #dev-bar
 HISTORY_LIMIT: int = 20  # 起動時に読み込む過去メッセージ件数
 
+# アイコン
+ICON_PATH: Path = Path(__file__).parent / "icon.jpg"
+
 # UI
 WINDOW_TITLE: str = "WatcherB"
 WINDOW_WIDTH: int = 1000
-WINDOW_HEIGHT: int = 700
-LEFT_PANEL_WIDTH: int = 350
+WINDOW_HEIGHT: int = 800
+LEFT_PANEL_WIDTH: int = 200
 
 # テーマ (Catppuccin Mocha ベース)
 COLORS = {
@@ -63,9 +67,37 @@ STATE_PROGRESS = {
 # フォント
 FONT_FAMILY: str = "Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace"
 FONT_SIZE: int = 20          # メッセージログのフォントサイズ (px)
-FONT_SIZE_TIMESTAMP: int = 20  # タイムスタンプのフォントサイズ (px)
+FONT_SIZE_TIMESTAMP: int = 3  # タイムスタンプのフォントサイズ (px)
 FONT_SIZE_STATUS: int = 20   # ステータスバーのフォントサイズ (px)
 LINE_HEIGHT: float = 2.3     # 行間 (倍率)
 
 # メッセージログ
 TIMESTAMP_WIDTH: int = 65         # タイムスタンプカラム幅 (px)
+
+# Phase 2: Project Card
+CARD_PADDING: int = 12            # ProjectCard の内部パディング (px)
+CARD_SPACING: int = 8             # ProjectCard 間のスペース (px)
+CARD_BORDER_RADIUS: int = 6       # ProjectCard の角丸 (px)
+PROGRESS_BAR_HEIGHT: int = 8      # QProgressBar の高さ (px)
+FONT_SIZE_PROJECT_NAME: int = 14  # プロジェクト名のフォントサイズ (px)
+FONT_SIZE_STATE_LABEL: int = 12   # 状態ラベルのフォントサイズ (px)
+FONT_SIZE_UPDATE_TIME: int = 10   # 最終更新時刻のフォントサイズ (px)
+
+# Phase 2: 状態ごとの表示色
+STATE_COLORS: dict = {
+    "IDLE": COLORS["subtext"],
+    "DESIGN_PLAN": COLORS["accent"],
+    "DESIGN_REVIEW": COLORS["accent"],
+    "DESIGN_REVISE": COLORS["accent"],
+    "DESIGN_APPROVED": COLORS["accent"],
+    "IMPLEMENTATION": COLORS["peach"],
+    "CODE_REVIEW": COLORS["blue"],
+    "CODE_REVISE": COLORS["blue"],
+    "CODE_APPROVED": COLORS["blue"],
+    "MERGE_SUMMARY_SENT": COLORS["green"],
+    "DONE": COLORS["green"],
+    "BLOCKED": COLORS["red"],
+}
+
+# Phase 2: System tray
+TRAY_TOOLTIP: str = "WatcherB - Discord Monitor"

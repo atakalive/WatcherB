@@ -1,9 +1,198 @@
-"""WatcherB custom widgets.
+"""WatcherB custom widgets — Phase 2.
 
-Phase 2 stub. This file will contain:
-- ProjectStatusCard: per-project status display with progress bar
-- ProjectStatusPanel: scrollable panel of ProjectStatusCards
-- TrayIcon: system tray integration
-
-Currently empty. Do not import from this file in Phase 1.
+- ProjectCard: per-project status display with progress bar
+- ProjectPanel: scrollable panel of ProjectCards
+- WatcherTrayIcon: system tray integration
 """
+
+from datetime import datetime
+from typing import Optional
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QAction, QIcon
+from PySide6.QtWidgets import (
+    QLabel,
+    QMenu,
+    QProgressBar,
+    QScrollArea,
+    QSystemTrayIcon,
+    QVBoxLayout,
+    QWidget,
+)
+
+import config
+
+
+class ProjectCard(QWidget):
+    """プロジェクト1つ分のステータスカード."""
+
+    def __init__(self, project_name: str, parent=None):
+        super().__init__(parent)
+        self._project_name = project_name
+        self._state = "IDLE"
+        self._progress_value = 0
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            config.CARD_PADDING, config.CARD_PADDING,
+            config.CARD_PADDING, config.CARD_PADDING,
+        )
+        layout.setSpacing(4)
+
+        # プロジェクト名ラベル
+        self._name_label = QLabel(self._project_name)
+        self._name_label.setStyleSheet(
+            f"font-size: {config.FONT_SIZE_PROJECT_NAME}px; "
+            f"font-weight: bold; "
+            f"color: {config.COLORS['text']}; "
+            f"background: transparent;"
+        )
+        layout.addWidget(self._name_label)
+
+        # 状態ラベル
+        initial_color = config.STATE_COLORS.get("IDLE", config.COLORS["subtext"])
+        self._state_label = QLabel("IDLE")
+        self._state_label.setStyleSheet(
+            f"font-size: {config.FONT_SIZE_STATE_LABEL}px; "
+            f"color: {initial_color}; "
+            f"background: transparent;"
+        )
+        layout.addWidget(self._state_label)
+
+        # プログレスバー
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setTextVisible(False)
+        self._progress_bar.setFixedHeight(config.PROGRESS_BAR_HEIGHT)
+        layout.addWidget(self._progress_bar)
+
+        # 最終更新時刻ラベル
+        self._time_label = QLabel("")
+        self._time_label.setStyleSheet(
+            f"font-size: {config.FONT_SIZE_UPDATE_TIME}px; "
+            f"color: {config.COLORS['subtext']}; "
+            f"background: transparent;"
+        )
+        layout.addWidget(self._time_label)
+
+        # カード背景
+        self.setStyleSheet(
+            f"ProjectCard {{ "
+            f"  background-color: {config.COLORS['surface']}; "
+            f"  border-radius: {config.CARD_BORDER_RADIUS}px; "
+            f"}}"
+        )
+
+    def update_state(self, new_state: str, timestamp: datetime):
+        """状態を更新し表示を反映."""
+        self._state = new_state
+        color = config.STATE_COLORS.get(new_state, config.COLORS["subtext"])
+
+        self._state_label.setText(new_state)
+        self._state_label.setStyleSheet(
+            f"font-size: {config.FONT_SIZE_STATE_LABEL}px; "
+            f"font-weight: bold; "
+            f"color: {color}; "
+            f"background: transparent;"
+        )
+
+        progress = config.STATE_PROGRESS.get(new_state, 0)
+        if progress == -1:
+            # BLOCKED: 現在値で停止、チャンクを赤に変更
+            self._progress_bar.setStyleSheet(
+                f"QProgressBar::chunk {{ background-color: {config.COLORS['red']}; }}"
+            )
+        else:
+            self._progress_value = progress
+            self._progress_bar.setValue(progress)
+            self._progress_bar.setStyleSheet(
+                f"QProgressBar::chunk {{ background-color: {config.COLORS['accent']}; }}"
+            )
+
+        local_time = timestamp.astimezone()
+        self._time_label.setText(f"Updated: {local_time.strftime('%H:%M')}")
+
+    @property
+    def project_name(self) -> str:
+        return self._project_name
+
+    @property
+    def state(self) -> str:
+        return self._state
+
+
+class ProjectPanel(QScrollArea):
+    """プロジェクトカードを縦に並べるスクロール可能パネル."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._cards: dict[str, ProjectCard] = {}
+
+        self._container = QWidget()
+        self._layout = QVBoxLayout(self._container)
+        self._layout.setContentsMargins(8, 8, 8, 8)
+        self._layout.setSpacing(config.CARD_SPACING)
+        self._layout.addStretch()  # カードを上詰め
+
+        self.setWidget(self._container)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+    def update_project(self, project_name: str, new_state: str,
+                       timestamp: datetime):
+        """プロジェクトの状態を更新（未知のプロジェクトは自動追加）."""
+        if project_name not in self._cards:
+            card = ProjectCard(project_name)
+            self._cards[project_name] = card
+            # stretch の前に挿入
+            self._layout.insertWidget(self._layout.count() - 1, card)
+
+        card = self._cards[project_name]
+        card.update_state(new_state, timestamp)
+
+    def get_state(self, project_name: str) -> Optional[str]:
+        """指定プロジェクトの現在の状態を返す."""
+        card = self._cards.get(project_name)
+        return card.state if card else None
+
+
+class WatcherTrayIcon(QSystemTrayIcon):
+    """システムトレイアイコン."""
+
+    show_requested = Signal()
+    exit_requested = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._setup_icon()
+        self._setup_menu()
+        self.setToolTip(config.TRAY_TOOLTIP)
+        self.activated.connect(self._on_activated)
+
+    def _setup_icon(self):
+        """icon.jpg をトレイアイコンとして設定."""
+        icon_path = str(config.ICON_PATH)
+        self.setIcon(QIcon(icon_path))
+
+    def _setup_menu(self):
+        menu = QMenu()
+
+        show_action = QAction("Show", menu)
+        show_action.triggered.connect(self.show_requested.emit)
+        menu.addAction(show_action)
+
+        menu.addSeparator()
+
+        exit_action = QAction("Exit", menu)
+        exit_action.triggered.connect(self.exit_requested.emit)
+        menu.addAction(exit_action)
+
+        self.setContextMenu(menu)
+
+    def _on_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self.show_requested.emit()
+

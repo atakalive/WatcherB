@@ -11,6 +11,9 @@ _PROJECT_RE = re.compile(r"\[([^\]]+)\]")
 # 汎用状態遷移パターン: [PJ] STATE_A → STATE_B
 _TRANSITION_RE = re.compile(r"\[.+?\]\s+\w+\s*→\s*\w+")
 
+# 状態変更抽出: STATE_A → STATE_B
+_STATE_CHANGE_RE = re.compile(r"(\w+)\s*→\s*(\w+)")
+
 
 @dataclass
 class ParsedMessage:
@@ -76,15 +79,34 @@ def _extract_project(content: str) -> Optional[str]:
     return None
 
 
+def extract_transition(content: str) -> Optional[tuple]:
+    """状態遷移メッセージから (from_state, to_state) を抽出.
+
+    Returns None if the message is not a state transition.
+    """
+    match = _STATE_CHANGE_RE.search(content)
+    if match:
+        return (match.group(1), match.group(2))
+    return None
+
+
 def parse_message(content: str, created_at: datetime) -> ParsedMessage:
     """メッセージを分類し構造化データとして返す."""
     msg_type = classify(content)
     project = _extract_project(content)
     timestamp = created_at.strftime("%H:%M")
 
+    extra = {}
+    if msg_type in ("transition", "blocked", "done"):
+        transition = extract_transition(content)
+        if transition:
+            extra["from_state"] = transition[0]
+            extra["to_state"] = transition[1]
+
     return ParsedMessage(
         msg_type=msg_type,
         project=project,
         raw_text=content,
         timestamp=timestamp,
+        extra=extra,
     )

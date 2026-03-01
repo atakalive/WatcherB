@@ -5,12 +5,14 @@ import re
 import sys
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
     QMainWindow,
+    QSplitter,
     QStatusBar,
+    QSystemTrayIcon,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -18,7 +20,8 @@ from PySide6.QtWidgets import (
 
 import config
 from discord_client import DiscordThread
-from message_parser import classify
+from message_parser import classify, parse_message
+from widgets import ProjectPanel, WatcherTrayIcon
 
 
 _STATE_RE = re.compile(
@@ -102,12 +105,16 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self._force_quit = False
         self._setup_ui()
         self._setup_shortcuts()
+        self._setup_tray()
         self._setup_discord()
 
     def _setup_ui(self):
         self.setWindowTitle(config.WINDOW_TITLE)
+        self.setWindowIcon(QIcon(str(config.ICON_PATH)))
+        self.setWindowFlags(self.windowFlags() | Qt.Tool)
         self.resize(config.WINDOW_WIDTH, config.WINDOW_HEIGHT)
 
         central = QWidget()
@@ -115,8 +122,17 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # QSplitter: 左=ProjectPanel, 右=MessageLog
+        self._splitter = QSplitter(Qt.Horizontal)
+        self._project_panel = ProjectPanel()
         self._message_log = MessageLog()
-        layout.addWidget(self._message_log)
+        self._splitter.addWidget(self._project_panel)
+        self._splitter.addWidget(self._message_log)
+        self._splitter.setSizes([
+            config.LEFT_PANEL_WIDTH,
+            config.WINDOW_WIDTH - config.LEFT_PANEL_WIDTH,
+        ])
+        layout.addWidget(self._splitter)
 
         self._status_label = QLabel("Disconnected")
         self._last_msg_label = QLabel("")
@@ -151,6 +167,28 @@ class MainWindow(QMainWindow):
         )
         self.statusBar().showMessage(f"Font size: {config.FONT_SIZE}px", 2000)
 
+    def _setup_tray(self):
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            self._tray = None
+            return
+        self._tray = WatcherTrayIcon(self)
+        self._tray.show_requested.connect(self._toggle_window)
+        self._tray.exit_requested.connect(self._exit_app)
+        self._tray.show()
+
+    def _toggle_window(self):
+        if self.isVisible():
+            self.hide()
+        else:
+            self.showNormal()
+            self.activateWindow()
+
+    def _exit_app(self):
+        if self._tray:
+            self._tray.hide()
+        self._force_quit = True
+        self.close()
+
     def _setup_discord(self):
         self._discord_thread = DiscordThread(parent=self)
         self._discord_thread.message_received.connect(self._on_message_received)
@@ -159,22 +197,39 @@ class MainWindow(QMainWindow):
         self._discord_thread.start()
 
     def _on_message_received(self, msg_dict: dict):
-        msg_type = classify(msg_dict["content"])
-        self._message_log.append_message(
-            msg_dict["content"], msg_dict["created_at"], msg_type
-        )
-        local_time = msg_dict["created_at"].astimezone()
+        content = msg_dict["content"]
+        created_at = msg_dict["created_at"]
+        msg_type = classify(content)
+
+        self._message_log.append_message(content, created_at, msg_type)
+        self._update_project_from_message(content, created_at, msg_type)
+
+        local_time = created_at.astimezone()
         self._last_msg_label.setText(f"Last msg: {local_time.strftime('%H:%M')}")
 
     def _on_history_loaded(self, messages: list):
         for msg_dict in messages:
-            msg_type = classify(msg_dict["content"])
-            self._message_log.append_message(
-                msg_dict["content"], msg_dict["created_at"], msg_type
-            )
+            content = msg_dict["content"]
+            created_at = msg_dict["created_at"]
+            msg_type = classify(content)
+
+            self._message_log.append_message(content, created_at, msg_type)
+            self._update_project_from_message(content, created_at, msg_type)
+
         if messages:
             local_time = messages[-1]["created_at"].astimezone()
             self._last_msg_label.setText(f"Last msg: {local_time.strftime('%H:%M')}")
+
+    def _update_project_from_message(self, content: str, created_at,
+                                     msg_type: str):
+        """状態遷移メッセージからプロジェクトパネルを更新."""
+        if msg_type not in ("transition", "blocked", "done"):
+            return
+        parsed = parse_message(content, created_at)
+        if parsed.project and parsed.extra.get("to_state"):
+            self._project_panel.update_project(
+                parsed.project, parsed.extra["to_state"], created_at
+            )
 
     def _on_connection_changed(self, state: str):
         display_map = {
@@ -187,13 +242,21 @@ class MainWindow(QMainWindow):
         self._status_label.setStyleSheet(f"color: {color};")
 
     def closeEvent(self, event):
-        """ウィンドウ閉じ時に Discord client を安全に停止."""
-        if self._discord_thread.isRunning():
-            self._discord_thread.request_stop()
-            if not self._discord_thread.wait(5000):
-                self._discord_thread.terminate()
-                self._discord_thread.wait(2000)
-        event.accept()
+        """ウィンドウ閉じ時: トレイに最小化 or 完全終了."""
+        if self._force_quit:
+            # トレイメニューの "Exit" からの終了
+            if self._discord_thread.isRunning():
+                self._discord_thread.request_stop()
+                if not self._discord_thread.wait(5000):
+                    self._discord_thread.terminate()
+                    self._discord_thread.wait(2000)
+            if self._tray:
+                self._tray.hide()
+            event.accept()
+        else:
+            # トレイに最小化
+            event.ignore()
+            self.hide()
 
 
 def _build_global_qss() -> str:
@@ -244,6 +307,23 @@ def _build_global_qss() -> str:
         QScrollBar::add-page:vertical,
         QScrollBar::sub-page:vertical {{
             background: none;
+        }}
+        QSplitter::handle {{
+            background-color: {c["surface"]};
+            width: 2px;
+        }}
+        QScrollArea {{
+            background-color: {c["bg"]};
+            border: none;
+        }}
+        QProgressBar {{
+            background-color: {c["bg"]};
+            border: none;
+            border-radius: 4px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {c["accent"]};
+            border-radius: 4px;
         }}
     """
 
