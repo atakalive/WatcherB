@@ -1,6 +1,7 @@
 """WatcherB — Discord #dev-bar リアルタイム監視 GUI."""
 
 import html
+import re
 import sys
 
 from PySide6.QtCore import Qt
@@ -18,6 +19,28 @@ from PySide6.QtWidgets import (
 import config
 from discord_client import DiscordThread
 from message_parser import classify
+
+
+_STATE_RE = re.compile(
+    r"((?:IDLE|DESIGN_PLAN|DESIGN_REVIEW|DESIGN_REVISE|DESIGN_APPROVED|"
+    r"IMPLEMENTATION|CODE_REVIEW|CODE_REVISE|CODE_APPROVED|"
+    r"MERGE_SUMMARY_SENT|DONE|BLOCKED|None))"
+)
+_ARROW_RE = re.compile(r"(→)")
+
+
+def _highlight_states(text: str) -> str:
+    """状態名とアローをアクセントカラーでハイライト."""
+    c = config.COLORS
+    text = _STATE_RE.sub(
+        rf'<span style="color: {c["accent"]}; font-weight: bold;"></span>',
+        text,
+    )
+    text = _ARROW_RE.sub(
+        rf'<span style="color: {c["subtext"]};"></span>',
+        text,
+    )
+    return text
 
 
 class MessageLog(QTextBrowser):
