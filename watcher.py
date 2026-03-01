@@ -4,6 +4,7 @@ import html
 import sys
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -68,6 +69,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self._setup_ui()
+        self._setup_shortcuts()
         self._setup_discord()
 
     def _setup_ui(self):
@@ -88,6 +90,32 @@ class MainWindow(QMainWindow):
         status_bar.addWidget(self._status_label)
         status_bar.addPermanentWidget(self._last_msg_label)
         self.setStatusBar(status_bar)
+
+    def _setup_shortcuts(self):
+        QShortcut(QKeySequence("Ctrl+="), self, self._zoom_in)
+        QShortcut(QKeySequence("Ctrl++"), self, self._zoom_in)
+        QShortcut(QKeySequence("Ctrl+-"), self, self._zoom_out)
+        QShortcut(QKeySequence("Ctrl+0"), self, self._zoom_reset)
+
+    def _zoom_in(self):
+        config.FONT_SIZE = min(config.FONT_SIZE + 1, 30)
+        self._apply_zoom()
+
+    def _zoom_out(self):
+        config.FONT_SIZE = max(config.FONT_SIZE - 1, 8)
+        self._apply_zoom()
+
+    def _zoom_reset(self):
+        config.FONT_SIZE = 13
+        self._apply_zoom()
+
+    def _apply_zoom(self):
+        self._message_log.setStyleSheet(
+            f'font-family: {config.FONT_FAMILY};'
+            f'font-size: {config.FONT_SIZE}px;'
+            f'line-height: {config.LINE_HEIGHT};'
+        )
+        self.statusBar().showMessage(f"Font size: {config.FONT_SIZE}px", 2000)
 
     def _setup_discord(self):
         self._discord_thread = DiscordThread(parent=self)
