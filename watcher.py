@@ -32,16 +32,17 @@ _ARROW_RE = re.compile(r"(→)")
 def _highlight_states(text: str) -> str:
     """状態名とアローをアクセントカラーでハイライト."""
     c = config.COLORS
+    accent = c["accent"]
+    subtext = c["subtext"]
     text = _STATE_RE.sub(
-        rf'<span style="color: {c["accent"]}; font-weight: bold;"></span>',
+        lambda m: f'<span style="color: {accent}; font-weight: bold;">{m.group(1)}</span>',
         text,
     )
     text = _ARROW_RE.sub(
-        rf'<span style="color: {c["subtext"]};"></span>',
+        lambda m: f'<span style="color: {subtext};">{m.group(1)}</span>',
         text,
     )
     return text
-
 
 class MessageLog(QTextBrowser):
     """メッセージログ表示ウィジェット（色分け + 自動スクロール）."""
