@@ -55,23 +55,34 @@ class MessageLog(QTextBrowser):
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_value_changed)
         self.verticalScrollBar().rangeChanged.connect(self._on_range_changed)
 
+    _TS_WIDTH = "3.8em"
+
     def append_message(self, content: str, created_at, msg_type: str):
         """色分けされたメッセージエントリをログに追加."""
         local_time = created_at.astimezone()
         time_str = local_time.strftime("%H:%M")
 
         bg_color = config.MSG_COLORS.get(msg_type)
-        bg_style = f"background-color: {bg_color};" if bg_color else ""
+        bar_style = f"border-left: 3px solid {bg_color};" if bg_color else "border-left: 3px solid transparent;"
 
-        escaped = html.escape(content).replace("\n", "<br>")
+        lines = content.split("\n")
+        first_line = _highlight_states(html.escape(lines[0]))
+
+        cont_lines = ""
+        if len(lines) > 1:
+            for line in lines[1:]:
+                esc = _highlight_states(html.escape(line))
+                cont_lines += (
+                    f'<div style="padding-left: {self._TS_WIDTH}; margin: 0;">'
+                    f'<span style="color: {config.COLORS["text"]};">{esc}</span></div>'
+                )
 
         html_block = (
-            f'<div style="{bg_style} padding: 4px 8px; margin: 1px 0;'
-            f' border-radius: 3px;">'
+            f'<div style="{bar_style} padding: 3px 8px; margin: 1px 0;">'
             f'<span style="color: {config.COLORS["subtext"]};'
             f' font-size: {config.FONT_SIZE_TIMESTAMP}px;">{time_str}</span> '
-            f'<span style="color: {config.COLORS["text"]};">'
-            f"{escaped}</span>"
+            f'<span style="color: {config.COLORS["text"]};">{first_line}</span>'
+            f"{cont_lines}"
             f"</div>"
         )
         self.append(html_block)
