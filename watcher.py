@@ -64,6 +64,7 @@ class MessageLog(QTextBrowser):
         text_color = config.COLORS["text"]
 
         lines = content.split("\n")
+        n = len(lines)
 
         rows = ""
         for i, line in enumerate(lines):
@@ -71,19 +72,19 @@ class MessageLog(QTextBrowser):
             if i == 0:
                 rows += (
                     f'<tr>'
-                    f'<td width="{config.TIMESTAMP_WIDTH}" valign="middle"><font color="{subtext}" size="2">{time_str}</font></td>'
-                    f'<td valign="top"><font color="{text_color}">{esc}</font></td>'
+                    f'<td width="{config.TIMESTAMP_WIDTH}" valign="middle" rowspan="{n}">'
+                    f'<font color="{subtext}" size="2">{time_str}</font></td>'
+                    f'<td><font color="{text_color}">{esc}</font></td>'
                     f'</tr>'
                 )
             else:
                 rows += (
                     f'<tr>'
-                    f'<td></td>'
                     f'<td><font color="{text_color}">{esc}</font></td>'
                     f'</tr>'
                 )
 
-        html_block = f'<table cellpadding="0" cellspacing="0" width="100%">{rows}</table>'
+        html_block = f'<table cellpadding="4" cellspacing="0" width="100%">{rows}</table>'
         self.append(html_block)
 
     def _on_scroll_value_changed(self, value: int):
