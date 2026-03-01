@@ -227,9 +227,17 @@ class MainWindow(QMainWindow):
             return
         parsed = parse_message(content, created_at)
         if parsed.project and parsed.extra.get("to_state"):
+            to_state = parsed.extra["to_state"]
             self._project_panel.update_project(
-                parsed.project, parsed.extra["to_state"], created_at
+                parsed.project, to_state, created_at
             )
+            if to_state == "BLOCKED" and self._tray:
+                self._tray.showMessage(
+                    parsed.project,
+                    f"{parsed.extra.get('from_state', '?')} → BLOCKED",
+                    QSystemTrayIcon.MessageIcon.Warning,
+                    5000,
+                )
 
     def _on_connection_changed(self, state: str):
         display_map = {
