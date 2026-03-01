@@ -55,36 +55,62 @@ class MessageLog(QTextBrowser):
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_value_changed)
         self.verticalScrollBar().rangeChanged.connect(self._on_range_changed)
 
-    _TS_WIDTH = "3.8em"
-
     def append_message(self, content: str, created_at, msg_type: str):
         """色分けされたメッセージエントリをログに追加."""
         local_time = created_at.astimezone()
         time_str = local_time.strftime("%H:%M")
 
         bg_color = config.MSG_COLORS.get(msg_type)
-        bar_style = f"border-left: 3px solid {bg_color};" if bg_color else "border-left: 3px solid transparent;"
+        subtext = config.COLORS["subtext"]
+        text_color = config.COLORS["text"]
 
         lines = content.split("\n")
         first_line = _highlight_states(html.escape(lines[0]))
 
-        cont_lines = ""
-        if len(lines) > 1:
-            for line in lines[1:]:
-                esc = _highlight_states(html.escape(line))
-                cont_lines += (
-                    f'<div style="padding-left: {self._TS_WIDTH}; margin: 0;">'
-                    f'<span style="color: {config.COLORS["text"]};">{esc}</span></div>'
-                )
-
-        html_block = (
-            f'<div style="{bar_style} padding: 3px 8px; margin: 1px 0;">'
-            f'<span style="color: {config.COLORS["subtext"]};'
-            f' font-size: {config.FONT_SIZE_TIMESTAMP}px;">{time_str}</span> '
-            f'<span style="color: {config.COLORS["text"]};">{first_line}</span>'
-            f"{cont_lines}"
-            f"</div>"
+        # 1行目: timestamp | text
+        rows = (
+            f'<tr>'
+            f'<td width="50" valign="top">'
+            f'<font color="{subtext}">{time_str}</font></td>'
+            f'<td valign="top"><font color="{text_color}">{first_line}</font></td>'
+            f'</tr>'
         )
+
+        # 2行目以降: 空 | text (インデント揃え)
+        for line in lines[1:]:
+            esc = _highlight_states(html.escape(line))
+            rows += (
+                f'<tr>'
+                f'<td width="50"></td>'
+                f'<td><font color="{text_color}">{esc}</font></td>'
+                f'</tr>'
+            )
+
+        # bg_colorがある場合、左端にカラーセルを追加
+        if bg_color:
+            # 各行の先頭にカラーセル追加
+            rows_with_bar = ""
+            for i, line in enumerate(content.split("\n")):
+                esc = _highlight_states(html.escape(line))
+                if i == 0:
+                    rows_with_bar = (
+                        f'<tr>'
+                        f'<td width="4" bgcolor="{bg_color}" rowspan="{len(lines)}">&nbsp;</td>'
+                        f'<td width="50" valign="top">'
+                        f'<font color="{subtext}">{time_str}</font></td>'
+                        f'<td valign="top"><font color="{text_color}">{esc}</font></td>'
+                        f'</tr>'
+                    )
+                else:
+                    rows_with_bar += (
+                        f'<tr>'
+                        f'<td width="50"></td>'
+                        f'<td><font color="{text_color}">{esc}</font></td>'
+                        f'</tr>'
+                    )
+            rows = rows_with_bar
+
+        html_block = f'<table cellpadding="0" cellspacing="2" width="100%">{rows}</table>'
         self.append(html_block)
 
     def _on_scroll_value_changed(self, value: int):
