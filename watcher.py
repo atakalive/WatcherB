@@ -1,0 +1,198 @@
+"""WatcherB — Discord #dev-bar リアルタイム監視 GUI."""
+
+import html
+import sys
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QMainWindow,
+    QStatusBar,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
+
+import config
+from discord_client import DiscordThread
+from message_parser import classify
+
+
+class MessageLog(QTextBrowser):
+    """メッセージログ表示ウィジェット（色分け + 自動スクロール）."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setReadOnly(True)
+        self.setOpenExternalLinks(False)
+        self._auto_scroll = True
+        self.verticalScrollBar().valueChanged.connect(self._on_scroll_value_changed)
+        self.verticalScrollBar().rangeChanged.connect(self._on_range_changed)
+
+    def append_message(self, content: str, created_at, msg_type: str):
+        """色分けされたメッセージエントリをログに追加."""
+        local_time = created_at.astimezone()
+        time_str = local_time.strftime("%H:%M")
+
+        bg_color = config.MSG_COLORS.get(msg_type)
+        bg_style = f"background-color: {bg_color};" if bg_color else ""
+
+        escaped = html.escape(content).replace("\n", "<br>")
+
+        html_block = (
+            f'<div style="{bg_style} padding: 4px 8px; margin: 1px 0;'
+            f' border-radius: 3px;">'
+            f'<span style="color: {config.COLORS["subtext"]};'
+            f' font-size: {config.FONT_SIZE_TIMESTAMP}px;">{time_str}</span> '
+            f'<span style="color: {config.COLORS["text"]};">'
+            f"{escaped}</span>"
+            f"</div>"
+        )
+        self.append(html_block)
+
+    def _on_scroll_value_changed(self, value: int):
+        """ユーザーが底部から離れたら自動スクロールを無効化."""
+        scrollbar = self.verticalScrollBar()
+        self._auto_scroll = (scrollbar.maximum() - value) <= 10
+
+    def _on_range_changed(self, _min: int, maximum: int):
+        """コンテンツ追加時、自動スクロールが有効なら底部へ移動."""
+        if self._auto_scroll:
+            self.verticalScrollBar().setValue(maximum)
+
+
+class MainWindow(QMainWindow):
+    """アプリケーションメインウィンドウ."""
+
+    def __init__(self):
+        super().__init__()
+        self._setup_ui()
+        self._setup_discord()
+
+    def _setup_ui(self):
+        self.setWindowTitle(config.WINDOW_TITLE)
+        self.resize(config.WINDOW_WIDTH, config.WINDOW_HEIGHT)
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self._message_log = MessageLog()
+        layout.addWidget(self._message_log)
+
+        self._status_label = QLabel("Disconnected")
+        self._last_msg_label = QLabel("")
+        status_bar = QStatusBar()
+        status_bar.addWidget(self._status_label)
+        status_bar.addPermanentWidget(self._last_msg_label)
+        self.setStatusBar(status_bar)
+
+    def _setup_discord(self):
+        self._discord_thread = DiscordThread(parent=self)
+        self._discord_thread.message_received.connect(self._on_message_received)
+        self._discord_thread.history_loaded.connect(self._on_history_loaded)
+        self._discord_thread.connection_changed.connect(self._on_connection_changed)
+        self._discord_thread.start()
+
+    def _on_message_received(self, msg_dict: dict):
+        msg_type = classify(msg_dict["content"])
+        self._message_log.append_message(
+            msg_dict["content"], msg_dict["created_at"], msg_type
+        )
+        local_time = msg_dict["created_at"].astimezone()
+        self._last_msg_label.setText(f"Last msg: {local_time.strftime('%H:%M')}")
+
+    def _on_history_loaded(self, messages: list):
+        for msg_dict in messages:
+            msg_type = classify(msg_dict["content"])
+            self._message_log.append_message(
+                msg_dict["content"], msg_dict["created_at"], msg_type
+            )
+        if messages:
+            local_time = messages[-1]["created_at"].astimezone()
+            self._last_msg_label.setText(f"Last msg: {local_time.strftime('%H:%M')}")
+
+    def _on_connection_changed(self, state: str):
+        display_map = {
+            "connected": ("Connected", config.COLORS["green"]),
+            "disconnected": ("Disconnected", config.COLORS["red"]),
+            "reconnecting": ("Reconnecting...", config.COLORS["yellow"]),
+        }
+        text, color = display_map.get(state, ("Unknown", config.COLORS["subtext"]))
+        self._status_label.setText(text)
+        self._status_label.setStyleSheet(f"color: {color};")
+
+    def closeEvent(self, event):
+        """ウィンドウ閉じ時に Discord client を安全に停止."""
+        if self._discord_thread.isRunning():
+            self._discord_thread.request_stop()
+            if not self._discord_thread.wait(5000):
+                self._discord_thread.terminate()
+                self._discord_thread.wait(2000)
+        event.accept()
+
+
+def _build_global_qss() -> str:
+    """config.COLORS からアプリ全体の QSS を生成."""
+    c = config.COLORS
+    return f"""
+        QMainWindow {{
+            background-color: {c["bg"]};
+        }}
+        QWidget {{
+            background-color: {c["bg"]};
+            color: {c["text"]};
+        }}
+        QTextBrowser {{
+            background-color: {c["bg"]};
+            color: {c["text"]};
+            border: none;
+            font-family: {config.FONT_FAMILY};
+            font-size: {config.FONT_SIZE}px;
+            line-height: {config.LINE_HEIGHT};
+            padding: 8px;
+        }}
+        QStatusBar {{
+            background-color: {c["surface"]};
+            color: {c["subtext"]};
+            font-size: {config.FONT_SIZE_STATUS}px;
+            padding: 2px 8px;
+        }}
+        QStatusBar QLabel {{
+            color: {c["subtext"]};
+        }}
+        QScrollBar:vertical {{
+            background-color: {c["bg"]};
+            width: 10px;
+        }}
+        QScrollBar::handle:vertical {{
+            background-color: {c["surface"]};
+            border-radius: 5px;
+            min-height: 30px;
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background-color: {c["subtext"]};
+        }}
+        QScrollBar::add-line:vertical,
+        QScrollBar::sub-line:vertical {{
+            height: 0px;
+        }}
+        QScrollBar::add-page:vertical,
+        QScrollBar::sub-page:vertical {{
+            background: none;
+        }}
+    """
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setStyleSheet(_build_global_qss())
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()

@@ -59,3 +59,10 @@ STATE_PROGRESS = {
     "DONE": 100,
     "BLOCKED": -1,  # 特殊: 現在値で停止+赤表示
 }
+
+# フォント
+FONT_FAMILY: str = "Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace"
+FONT_SIZE: int = 13          # メッセージログのフォントサイズ (px)
+FONT_SIZE_TIMESTAMP: int = 11  # タイムスタンプのフォントサイズ (px)
+FONT_SIZE_STATUS: int = 12   # ステータスバーのフォントサイズ (px)
+LINE_HEIGHT: float = 1.6     # 行間 (倍率)
