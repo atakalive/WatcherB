@@ -72,7 +72,7 @@ class MessageLog(QTextBrowser):
             if i == 0:
                 rows += (
                     f'<tr>'
-                    f'<td width="{config.TIMESTAMP_WIDTH}" valign="middle" rowspan="{n}">'
+                    f'<td width="{config.TIMESTAMP_WIDTH}" valign="top">'
                     f'<font color="{subtext}" size="2">{time_str}</font></td>'
                     f'<td><font color="{text_color}">{esc}</font></td>'
                     f'</tr>'
