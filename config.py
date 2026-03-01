@@ -63,9 +63,9 @@ STATE_PROGRESS = {
 # フォント
 FONT_FAMILY: str = "Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace"
 FONT_SIZE: int = 20          # メッセージログのフォントサイズ (px)
-FONT_SIZE_TIMESTAMP: int = 18  # タイムスタンプのフォントサイズ (px)
+FONT_SIZE_TIMESTAMP: int = 20  # タイムスタンプのフォントサイズ (px)
 FONT_SIZE_STATUS: int = 20   # ステータスバーのフォントサイズ (px)
 LINE_HEIGHT: float = 2.3     # 行間 (倍率)
 
 # メッセージログ
-TIMESTAMP_WIDTH: int = 42         # タイムスタンプカラム幅 (px)
+TIMESTAMP_WIDTH: int = 65         # タイムスタンプカラム幅 (px)
