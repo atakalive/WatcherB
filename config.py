@@ -8,8 +8,11 @@ load_dotenv()
 
 # Discord
 DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
-CHANNEL_ID: int = 1474050582049329213  # #dev-bar
+CHANNEL_ID: int = 1474050582049329213  # #gokrax
 HISTORY_LIMIT: int = 20  # 起動時に読み込む過去メッセージ件数
+
+# 送信機能（デフォルト OFF。True にしてアプリ再起動で有効化）
+SEND_ENABLED: bool = False
 
 # アイコン
 ICON_PATH: Path = Path(__file__).parent / "icon.jpg"

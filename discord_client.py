@@ -101,6 +101,28 @@ class DiscordThread(QThread):
             "message_id": message.id,
         }
 
+    def send_message(self, content: str) -> None:
+        """メインスレッドから呼び出し、監視対象チャンネルにメッセージを送信する。
+
+        discord.py の asyncio ループにコルーチンをスケジュールする。
+        _loop または _client が None の場合（未接続時）は何もしない。
+        """
+        if self._loop is None or self._client is None:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._send(content), self._loop
+        )
+
+    async def _send(self, content: str) -> None:
+        """実際の送信処理（discord.py の asyncio ループ内で実行）."""
+        channel = self._client.get_channel(config.CHANNEL_ID)
+        if channel is None:
+            try:
+                channel = await self._client.fetch_channel(config.CHANNEL_ID)
+            except (discord.NotFound, discord.Forbidden):
+                return
+        await channel.send(content)
+
     def request_stop(self):
         """メインスレッドから安全に停止を要求する."""
         if self._loop is not None and self._client is not None:

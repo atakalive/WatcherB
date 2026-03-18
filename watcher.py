@@ -1,4 +1,4 @@
-"""WatcherB — Discord #dev-bar リアルタイム監視 GUI."""
+"""WatcherB — Discord #gokrax リアルタイム監視 GUI."""
 
 import html
 import re
@@ -9,6 +9,7 @@ from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QSplitter,
     QStatusBar,
@@ -134,6 +135,14 @@ class MainWindow(QMainWindow):
         ])
         layout.addWidget(self._splitter)
 
+        if config.SEND_ENABLED:
+            self._send_input = QLineEdit()
+            self._send_input.setPlaceholderText("Send command to #gokrax...")
+            self._send_input.returnPressed.connect(self._on_send)
+            layout.addWidget(self._send_input)
+        else:
+            self._send_input = None
+
         self._status_label = QLabel("Disconnected")
         self._last_msg_label = QLabel("")
         status_bar = QStatusBar()
@@ -249,6 +258,16 @@ class MainWindow(QMainWindow):
         self._status_label.setText(text)
         self._status_label.setStyleSheet(f"color: {color};")
 
+    def _on_send(self) -> None:
+        """テキスト入力欄の Enter キー押下で呼ばれる。入力内容をチャンネルに送信する。"""
+        if self._send_input is None:
+            return
+        text = self._send_input.text().strip()
+        if not text:
+            return
+        self._discord_thread.send_message(text)
+        self._send_input.clear()
+
     def closeEvent(self, event):
         """ウィンドウ閉じ時: トレイに最小化 or 完全終了."""
         if self._force_quit:
@@ -332,6 +351,18 @@ def _build_global_qss() -> str:
         QProgressBar::chunk {{
             background-color: {c["accent"]};
             border-radius: 4px;
+        }}
+        QLineEdit {{
+            background-color: {c["surface"]};
+            color: {c["text"]};
+            border: 1px solid {c["subtext"]};
+            border-radius: 4px;
+            padding: 6px 8px;
+            font-family: {config.FONT_FAMILY};
+            font-size: {config.FONT_SIZE}px;
+        }}
+        QLineEdit:focus {{
+            border-color: {c["accent"]};
         }}
     """
 
