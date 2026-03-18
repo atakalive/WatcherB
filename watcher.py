@@ -133,25 +133,32 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # QSplitter: 左=ProjectPanel, 右=MessageLog
+        # QSplitter: 左=ProjectPanel, 右=right_container(MessageLog + QLineEdit)
         self._splitter = QSplitter(Qt.Horizontal)
         self._project_panel = ProjectPanel()
         self._message_log = MessageLog()
-        self._splitter.addWidget(self._project_panel)
-        self._splitter.addWidget(self._message_log)
-        self._splitter.setSizes([
-            config.LEFT_PANEL_WIDTH,
-            config.WINDOW_WIDTH - config.LEFT_PANEL_WIDTH,
-        ])
-        layout.addWidget(self._splitter)
+
+        right_container = QWidget()
+        right_layout = QVBoxLayout(right_container)
+        right_layout.setContentsMargins(0, 0, 0, 4)
+        right_layout.setSpacing(4)
+        right_layout.addWidget(self._message_log)
 
         if config.SEND_ENABLED:
             self._send_input = QLineEdit()
             self._send_input.setPlaceholderText("Send command to #gokrax...")
             self._send_input.returnPressed.connect(self._on_send)
-            layout.addWidget(self._send_input)
+            right_layout.addWidget(self._send_input)
         else:
             self._send_input = None
+
+        self._splitter.addWidget(self._project_panel)
+        self._splitter.addWidget(right_container)
+        self._splitter.setSizes([
+            config.LEFT_PANEL_WIDTH,
+            config.WINDOW_WIDTH - config.LEFT_PANEL_WIDTH,
+        ])
+        layout.addWidget(self._splitter)
 
         self._status_label = QLabel("Disconnected")
         self._last_msg_label = QLabel("")
