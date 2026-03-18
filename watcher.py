@@ -33,6 +33,16 @@ _STATE_RE = re.compile(
 _ARROW_RE = re.compile(r"(→)")
 
 
+def _markdown_to_html(text: str) -> str:
+    """Discord Markdown の太字を HTML <b> に変換する.
+
+    html.escape() 済みのテキストに対して呼ぶこと。
+    `**text**` → `<b>text</b>` に変換する。
+    ネストや改行をまたぐケースは対象外。
+    """
+    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+
+
 def _highlight_states(text: str) -> str:
     """状態名とアローをアクセントカラーでハイライト."""
     c = config.COLORS
@@ -71,7 +81,7 @@ class MessageLog(QTextBrowser):
 
         rows = ""
         for i, line in enumerate(lines):
-            esc = _highlight_states(html.escape(line))
+            esc = _markdown_to_html(_highlight_states(html.escape(line)))
             if i == 0:
                 rows += (
                     f'<tr>'
