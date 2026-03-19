@@ -1,4 +1,4 @@
-"""WatcherB Discord client — QThread 内で discord.py を実行."""
+"""WatcherB Discord client — run discord.py in a QThread."""
 
 import asyncio
 from typing import Optional
@@ -10,10 +10,10 @@ import config
 
 
 class DiscordThread(QThread):
-    """Discord Gateway に接続し、メッセージを Qt Signal で通知する.
+    """Run discord.py in a QThread.
 
-    discord.py の asyncio ループはこのスレッド内で独立して動作する。
-    メインスレッドとの通信は全て Signal/Slot 経由。
+    The asyncio event loop runs inside this thread.
+    All communication with the main thread uses Signal/Slot.
     """
 
     message_received = Signal(dict)
@@ -26,7 +26,7 @@ class DiscordThread(QThread):
         self._client: Optional[discord.Client] = None
 
     def run(self):
-        """QThread エントリポイント. asyncio ループを作成して bot を実行."""
+        """QThread entry point. Create asyncio loop and run the bot."""
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
         try:
@@ -38,7 +38,7 @@ class DiscordThread(QThread):
             self._loop.close()
 
     async def _run_bot(self):
-        """Discord client をセットアップして開始."""
+        """Set up and start the Discord client."""
         intents = discord.Intents.default()
         intents.message_content = True
 
@@ -75,7 +75,7 @@ class DiscordThread(QThread):
             self.connection_changed.emit("disconnected")
 
     async def _load_history(self):
-        """起動時に過去メッセージを取得して emit."""
+        """Fetch past messages on startup and emit."""
         channel = self._client.get_channel(config.CHANNEL_ID)
         if channel is None:
             try:
@@ -87,13 +87,13 @@ class DiscordThread(QThread):
         async for msg in channel.history(limit=config.HISTORY_LIMIT):
             messages.append(self._msg_to_dict(msg))
 
-        # history() は新しい順で返すので逆順にする（古い順）
+        # history() returns newest first, so reverse to chronological order
         messages.reverse()
         self.history_loaded.emit(messages)
 
     @staticmethod
     def _msg_to_dict(message: discord.Message) -> dict:
-        """discord.Message をスレッド間転送用の dict に変換."""
+        """Convert discord.Message to a dict for cross-thread transfer."""
         return {
             "content": message.content,
             "author": message.author.display_name,
@@ -102,10 +102,10 @@ class DiscordThread(QThread):
         }
 
     def send_message(self, content: str) -> None:
-        """メインスレッドから呼び出し、監視対象チャンネルにメッセージを送信する。
+        """Send a message to the monitored channel from the main thread.
 
-        discord.py の asyncio ループにコルーチンをスケジュールする。
-        _loop または _client が None の場合（未接続時）は何もしない。
+        Schedules a coroutine on the discord.py asyncio loop.
+        Does nothing if _loop or _client is None (not connected).
         """
         if self._loop is None or self._client is None:
             return
@@ -114,7 +114,7 @@ class DiscordThread(QThread):
         )
 
     async def _send(self, content: str) -> None:
-        """実際の送信処理（discord.py の asyncio ループ内で実行）."""
+        """Actual send operation (runs in the discord.py asyncio loop)."""
         channel = self._client.get_channel(config.CHANNEL_ID)
         if channel is None:
             try:
@@ -124,6 +124,6 @@ class DiscordThread(QThread):
         await channel.send(content)
 
     def request_stop(self):
-        """メインスレッドから安全に停止を要求する."""
+        """Request a safe shutdown from the main thread."""
         if self._loop is not None and self._client is not None:
             asyncio.run_coroutine_threadsafe(self._client.close(), self._loop)

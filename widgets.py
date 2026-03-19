@@ -24,7 +24,7 @@ import config
 
 
 class ProjectCard(QWidget):
-    """プロジェクト1つ分のステータスカード."""
+    """Status card for a single project."""
 
     def __init__(self, project_name: str, parent=None):
         super().__init__(parent)
@@ -41,7 +41,7 @@ class ProjectCard(QWidget):
         )
         layout.setSpacing(4)
 
-        # プロジェクト名ラベル
+        # Project name label
         self._name_label = QLabel(self._project_name)
         self._name_label.setStyleSheet(
             f"font-size: {config.FONT_SIZE_PROJECT_NAME}px; "
@@ -51,7 +51,7 @@ class ProjectCard(QWidget):
         )
         layout.addWidget(self._name_label)
 
-        # 状態ラベル
+        # State label
         initial_color = config.STATE_COLORS.get("IDLE", config.COLORS["subtext"])
         self._state_label = QLabel("IDLE")
         self._state_label.setStyleSheet(
@@ -61,7 +61,7 @@ class ProjectCard(QWidget):
         )
         layout.addWidget(self._state_label)
 
-        # プログレスバー
+        # Progress bar
         self._progress_bar = QProgressBar()
         self._progress_bar.setRange(0, 100)
         self._progress_bar.setValue(0)
@@ -69,7 +69,7 @@ class ProjectCard(QWidget):
         self._progress_bar.setFixedHeight(config.PROGRESS_BAR_HEIGHT)
         layout.addWidget(self._progress_bar)
 
-        # 最終更新時刻ラベル
+        # Last update time label
         self._time_label = QLabel("")
         self._time_label.setStyleSheet(
             f"font-size: {config.FONT_SIZE_UPDATE_TIME}px; "
@@ -78,7 +78,7 @@ class ProjectCard(QWidget):
         )
         layout.addWidget(self._time_label)
 
-        # カード背景
+        # Card background
         self.setStyleSheet(
             f"ProjectCard {{ "
             f"  background-color: {config.COLORS['surface']}; "
@@ -87,7 +87,7 @@ class ProjectCard(QWidget):
         )
 
     def update_state(self, new_state: str, timestamp: datetime):
-        """状態を更新し表示を反映."""
+        """Update state and refresh display."""
         self._state = new_state
         color = config.STATE_COLORS.get(new_state, config.COLORS["subtext"])
 
@@ -101,7 +101,7 @@ class ProjectCard(QWidget):
 
         progress = config.STATE_PROGRESS.get(new_state, 0)
         if progress == -1:
-            # BLOCKED: 現在値で停止、チャンクを赤に変更
+            # BLOCKED: freeze at current value, change chunk to red
             self._progress_bar.setStyleSheet(
                 f"QProgressBar::chunk {{ background-color: {config.COLORS['red']}; }}"
             )
@@ -125,7 +125,7 @@ class ProjectCard(QWidget):
 
 
 class ProjectPanel(QScrollArea):
-    """プロジェクトカードを縦に並べるスクロール可能パネル."""
+    """Scrollable panel that arranges ProjectCards vertically."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -135,7 +135,7 @@ class ProjectPanel(QScrollArea):
         self._layout = QVBoxLayout(self._container)
         self._layout.setContentsMargins(8, 8, 8, 8)
         self._layout.setSpacing(config.CARD_SPACING)
-        self._layout.addStretch()  # カードを上詰め
+        self._layout.addStretch()  # Top-align cards
 
         self.setWidget(self._container)
         self.setWidgetResizable(True)
@@ -143,24 +143,24 @@ class ProjectPanel(QScrollArea):
 
     def update_project(self, project_name: str, new_state: str,
                        timestamp: datetime):
-        """プロジェクトの状態を更新（未知のプロジェクトは自動追加）."""
+        """Update project state (unknown projects are auto-added)."""
         if project_name not in self._cards:
             card = ProjectCard(project_name)
             self._cards[project_name] = card
-            # stretch の前に挿入
+            # Insert before stretch
             self._layout.insertWidget(self._layout.count() - 1, card)
 
         card = self._cards[project_name]
         card.update_state(new_state, timestamp)
 
     def get_state(self, project_name: str) -> Optional[str]:
-        """指定プロジェクトの現在の状態を返す."""
+        """Return the current state of the specified project."""
         card = self._cards.get(project_name)
         return card.state if card else None
 
 
 class WatcherTrayIcon(QSystemTrayIcon):
-    """システムトレイアイコン."""
+    """System tray icon."""
 
     show_requested = Signal()
     exit_requested = Signal()
@@ -173,7 +173,7 @@ class WatcherTrayIcon(QSystemTrayIcon):
         self.activated.connect(self._on_activated)
 
     def _setup_icon(self):
-        """icon.jpg をトレイアイコンとして設定."""
+        """Set icon.jpg as the tray icon."""
         icon_path = str(config.ICON_PATH)
         self.setIcon(QIcon(icon_path))
 

@@ -1,23 +1,23 @@
-"""WatcherB message parser — Discord メッセージの分類と構造化."""
+"""WatcherB message parser — classify and structure Discord messages."""
 
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-# プロジェクト名抽出用正規表現
+# Regex for extracting project name
 _PROJECT_RE = re.compile(r"\[([^\]]+)\]")
 
-# 汎用状態遷移パターン: [PJ] STATE_A → STATE_B
+# General state transition pattern: [PJ] STATE_A → STATE_B
 _TRANSITION_RE = re.compile(r"\[.+?\]\s+\w+\s*→\s*\w+")
 
-# 状態変更抽出: STATE_A → STATE_B
+# State change extraction: STATE_A → STATE_B
 _STATE_CHANGE_RE = re.compile(r"(\w+)\s*→\s*(\w+)")
 
 
 @dataclass
 class ParsedMessage:
-    """解析済みメッセージ."""
+    """Parsed message."""
 
     msg_type: str
     project: Optional[str]
@@ -27,24 +27,24 @@ class ParsedMessage:
 
 
 def classify(content: str) -> str:
-    """メッセージ内容から種別を判定する.
+    """Classify message content by type.
 
-    優先度順に評価し、最初にマッチした種別を返す。
-    blocked/done は transition の特殊ケースなので先に判定する。
+    Evaluates in priority order, returning the first match.
+    blocked/done are special cases of transition, so check them first.
     """
-    # 特殊遷移（汎用遷移より先に判定）
+    # Special transitions (check before general transition)
     if "→ BLOCKED" in content:
         return "blocked"
     if "→ DONE" in content:
         return "done"
 
-    # CC進捗
+    # CC progress
     if "CC Plan 開始" in content or "CC Impl 開始" in content:
         return "cc_start"
     if "CC Plan 完了" in content or "CC Impl 完了" in content:
         return "cc_done"
 
-    # 催促
+    # Nudge
     if "催促" in content:
         return "nudge"
 
@@ -52,15 +52,15 @@ def classify(content: str) -> str:
     if "REVISE対象:" in content:
         return "revise"
 
-    # マージサマリー
+    # Merge summary
     if "マージサマリー" in content:
         return "merge_summary"
 
-    # Issue一覧
+    # Issue list
     if "対象Issue:" in content:
         return "issue_list"
 
-    # 汎用状態遷移
+    # General state transition
     if _TRANSITION_RE.search(content):
         return "transition"
 
@@ -68,11 +68,11 @@ def classify(content: str) -> str:
 
 
 def _extract_project(content: str) -> Optional[str]:
-    """[PJ] or [Queue][PJ] プレフィクスからプロジェクト名を抽出."""
+    """Extract project name from [PJ] or [Queue][PJ] prefix."""
     matches = _PROJECT_RE.findall(content)
     if not matches:
         return None
-    # [Queue][PJ] の場合、"Queue" を飛ばして次のブラケットを返す
+    # For [Queue][PJ], skip "Queue" and return the next bracket
     for m in matches:
         if m != "Queue":
             return m
@@ -80,7 +80,7 @@ def _extract_project(content: str) -> Optional[str]:
 
 
 def extract_transition(content: str) -> Optional[tuple]:
-    """状態遷移メッセージから (from_state, to_state) を抽出.
+    """Extract (from_state, to_state) from a state transition message.
 
     Returns None if the message is not a state transition.
     """
@@ -91,7 +91,7 @@ def extract_transition(content: str) -> Optional[tuple]:
 
 
 def parse_message(content: str, created_at: datetime) -> ParsedMessage:
-    """メッセージを分類し構造化データとして返す."""
+    """Classify a message and return it as structured data."""
     msg_type = classify(content)
     project = _extract_project(content)
     timestamp = created_at.strftime("%H:%M")

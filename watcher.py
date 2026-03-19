@@ -1,4 +1,4 @@
-"""WatcherB — Discord #gokrax リアルタイム監視 GUI."""
+"""WatcherB — Discord #gokrax real-time monitoring GUI."""
 
 import html
 import re
@@ -34,17 +34,17 @@ _ARROW_RE = re.compile(r"(→)")
 
 
 def _markdown_to_html(text: str) -> str:
-    """Discord Markdown の太字を HTML <b> に変換する.
+    """Convert Discord Markdown bold to HTML <b>.
 
-    html.escape() 済みのテキストに対して呼ぶこと。
-    `**text**` → `<b>text</b>` に変換する。
-    ネストや改行をまたぐケースは対象外。
+    Call on text already processed by html.escape().
+    Converts `**text**` to `<b>text</b>`.
+    Nested or multi-line cases are not handled.
     """
     return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
 
 
 def _highlight_states(text: str) -> str:
-    """状態名とアローをアクセントカラーでハイライト."""
+    """Highlight state names and arrows with accent color."""
     c = config.COLORS
     accent = c["accent"]
     subtext = c["subtext"]
@@ -59,7 +59,7 @@ def _highlight_states(text: str) -> str:
     return text
 
 class MessageLog(QTextBrowser):
-    """メッセージログ表示ウィジェット（色分け + 自動スクロール）."""
+    """Message log display widget (color-coded + auto-scroll)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -70,7 +70,7 @@ class MessageLog(QTextBrowser):
         self.verticalScrollBar().rangeChanged.connect(self._on_range_changed)
 
     def append_message(self, content: str, created_at, msg_type: str):
-        """色分けされたメッセージエントリをログに追加."""
+        """Append a color-coded message entry to the log."""
         local_time = created_at.astimezone()
         time_str = local_time.strftime("%H:%M")
 
@@ -101,18 +101,18 @@ class MessageLog(QTextBrowser):
         self.append(html_block)
 
     def _on_scroll_value_changed(self, value: int):
-        """ユーザーが底部から離れたら自動スクロールを無効化."""
+        """Disable auto-scroll when user scrolls away from bottom."""
         scrollbar = self.verticalScrollBar()
         self._auto_scroll = (scrollbar.maximum() - value) <= 10
 
     def _on_range_changed(self, _min: int, maximum: int):
-        """コンテンツ追加時、自動スクロールが有効なら底部へ移動."""
+        """Scroll to bottom on new content if auto-scroll is enabled."""
         if self._auto_scroll:
             self.verticalScrollBar().setValue(maximum)
 
 
 class MainWindow(QMainWindow):
-    """アプリケーションメインウィンドウ."""
+    """Application main window."""
 
     def __init__(self):
         super().__init__()
@@ -133,7 +133,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # QSplitter: 左=ProjectPanel, 右=right_container(MessageLog + QLineEdit)
+        # QSplitter: left=ProjectPanel, right=right_container(MessageLog + QLineEdit)
         self._splitter = QSplitter(Qt.Horizontal)
         self._project_panel = ProjectPanel()
         self._message_log = MessageLog()
@@ -248,7 +248,7 @@ class MainWindow(QMainWindow):
 
     def _update_project_from_message(self, content: str, created_at,
                                      msg_type: str):
-        """状態遷移メッセージからプロジェクトパネルを更新."""
+        """Update project panel from state transition messages."""
         if msg_type not in ("transition", "blocked", "done"):
             return
         parsed = parse_message(content, created_at)
@@ -276,7 +276,7 @@ class MainWindow(QMainWindow):
         self._status_label.setStyleSheet(f"color: {color};")
 
     def _on_send(self) -> None:
-        """テキスト入力欄の Enter キー押下で呼ばれる。入力内容をチャンネルに送信する。"""
+        """Called on Enter key press in the text input. Send content to the channel."""
         if self._send_input is None:
             return
         text = self._send_input.text().strip()
@@ -286,9 +286,9 @@ class MainWindow(QMainWindow):
         self._send_input.clear()
 
     def closeEvent(self, event):
-        """ウィンドウ閉じ時: トレイに最小化 or 完全終了."""
+        """On window close: minimize to tray or fully exit."""
         if self._force_quit:
-            # トレイメニューの "Exit" からの終了
+            # Exit from tray menu "Exit"
             if self._discord_thread.isRunning():
                 self._discord_thread.request_stop()
                 if not self._discord_thread.wait(5000):
@@ -298,13 +298,13 @@ class MainWindow(QMainWindow):
                 self._tray.hide()
             event.accept()
         else:
-            # トレイに最小化
+            # Minimize to tray
             event.ignore()
             self.hide()
 
 
 def _build_global_qss() -> str:
-    """config.COLORS からアプリ全体の QSS を生成."""
+    """Generate application-wide QSS from config.COLORS."""
     c = config.COLORS
     return f"""
         QMainWindow {{
