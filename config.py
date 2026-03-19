@@ -12,7 +12,7 @@ CHANNEL_ID: int = 1474050582049329213  # #gokrax
 HISTORY_LIMIT: int = 20  # 起動時に読み込む過去メッセージ件数
 
 # 送信機能（デフォルト OFF。True にしてアプリ再起動で有効化）
-SEND_ENABLED: bool = False
+SEND_ENABLED: bool = True
 
 # アイコン
 ICON_PATH: Path = Path(__file__).parent / "icon.jpg"
