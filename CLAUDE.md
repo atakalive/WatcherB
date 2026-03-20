@@ -51,17 +51,11 @@ class DiscordThread(QThread):
 
 ## メッセージ分類
 
-message_parser.py で以下の種別に分類する:
+message_parser.py で以下の4種別に分類する:
 - `transition`: 状態遷移 (`[PJ] STATE_A → STATE_B`)
-- `cc_start`: CC開始 (`📋 CC Plan 開始` / `🔨 CC Impl 開始`)
-- `cc_done`: CC完了 (`✅ CC Plan 完了` / `✅ CC Impl 完了`)
-- `nudge`: 催促 (`担当者 xxx を催促` / `レビュアーを催促`)
-- `revise`: REVISE関連 (`REVISE対象:`)
-- `merge_summary`: マージサマリー (`マージサマリー`)
 - `blocked`: BLOCKED遷移 (`→ BLOCKED`)
 - `done`: DONE遷移 (`→ DONE`)
-- `issue_list`: Issue一覧 (`対象Issue:`)
-- `unknown`: 上記に該当しないもの
+- `info`: 上記に該当しないもの
 
 ## 起動時の過去メッセージ読み込み
 

@@ -39,16 +39,10 @@ COLORS = {
 
 # Message type -> background color
 MSG_COLORS = {
-    "transition": None,        # default
-    "cc_start": "#1e3a5f",     # light blue
-    "cc_done": "#1e3f2e",      # light green
-    "nudge": "#3f3a1e",        # light yellow
-    "revise": "#3f1e1e",       # light red
-    "merge_summary": "#1e3f2e",# light green
-    "blocked": "#5f1e1e",      # red
-    "done": "#1e3f2e",         # green
-    "issue_list": None,        # default
-    "unknown": None,           # default
+    "transition": None,
+    "blocked": "#5f1e1e",
+    "done": "#1e3f2e",
+    "info": None,
 }
 
 # Pipeline state -> progress percentage (%)

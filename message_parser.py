@@ -29,42 +29,16 @@ class ParsedMessage:
 def classify(content: str) -> str:
     """Classify message content by type.
 
-    Evaluates in priority order, returning the first match.
-    blocked/done are special cases of transition, so check them first.
+    Returns one of: "blocked", "done", "transition", "info".
+    blocked/done are special cases of transition, checked first.
     """
-    # Special transitions (check before general transition)
     if "→ BLOCKED" in content:
         return "blocked"
     if "→ DONE" in content:
         return "done"
-
-    # CC progress
-    if "CC Plan 開始" in content or "CC Impl 開始" in content:
-        return "cc_start"
-    if "CC Plan 完了" in content or "CC Impl 完了" in content:
-        return "cc_done"
-
-    # Nudge
-    if "催促" in content:
-        return "nudge"
-
-    # REVISE
-    if "REVISE対象:" in content:
-        return "revise"
-
-    # Merge summary
-    if "マージサマリー" in content:
-        return "merge_summary"
-
-    # Issue list
-    if "対象Issue:" in content:
-        return "issue_list"
-
-    # General state transition
     if _TRANSITION_RE.search(content):
         return "transition"
-
-    return "unknown"
+    return "info"
 
 
 def _extract_project(content: str) -> Optional[str]:
