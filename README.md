@@ -1,6 +1,6 @@
 # WatcherB
 
-DevBar パイプライン監視GUI。Discord #dev-bar チャンネルのメッセージをリアルタイム受信・表示する。
+gokrax パイプライン監視GUI。Discord #gokrax チャンネルのメッセージをリアルタイム受信・表示する。
 
 ## セットアップ (Windows)
 

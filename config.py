@@ -12,7 +12,7 @@ CHANNEL_ID: int = 1474050582049329213  # #gokrax
 HISTORY_LIMIT: int = 20  # Number of past messages to load on startup
 
 # Send feature (default OFF. Set True and restart to enable)
-SEND_ENABLED: bool = False
+SEND_ENABLED: bool = True
 
 # Icon
 ICON_PATH: Path = Path(__file__).parent / "icon.jpg"
