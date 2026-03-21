@@ -8,14 +8,17 @@ load_dotenv()
 
 # Discord
 DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
-CHANNEL_ID: int = 1474050582049329213  # #gokrax
+CHANNEL_ID: int = int(os.getenv("CHANNEL_ID", "0"))  # #gokrax chennel ID
 HISTORY_LIMIT: int = 20  # Number of past messages to load on startup
 
-# Send feature (default OFF. Set True and restart to enable)
-SEND_ENABLED: bool = True
-
-# Icon
-ICON_PATH: Path = Path(__file__).parent / "icon.jpg"
+# Command sending feature (default OFF. Set True and restart to enable)
+SEND_ENABLED: bool = os.getenv("SEND_ENABLED", "false").lower() in ("true", "1", "yes")
+    
+# Icon (my_icon.png overrides default if present)
+_project_root = Path(__file__).parent
+_custom_icon_candidates = [_project_root / "my_icon.png", _project_root / "my_icon.jpg"]
+_custom_icon = next((p for p in _custom_icon_candidates if p.exists()), None)
+ICON_PATH: Path = _custom_icon if _custom_icon else _project_root / "icon.png"
 
 # UI
 WINDOW_TITLE: str = "WatcherB"
