@@ -25,9 +25,11 @@ from message_parser import classify, parse_message
 from widgets import ProjectPanel, WatcherTrayIcon
 
 
+# Alternation order: longer patterns before shorter ones (longest-match-first).
+# e.g. DESIGN_REVIEW_NPASS before DESIGN_REVIEW to avoid partial match.
 _STATE_RE = re.compile(
-    r"((?:IDLE|DESIGN_PLAN|DESIGN_REVIEW_NPASS|DESIGN_REVIEW|DESIGN_REVISE|DESIGN_APPROVED|"
-    r"IMPLEMENTATION|CODE_REVIEW_NPASS|CODE_REVIEW|CODE_REVISE|CODE_APPROVED|"
+    r"((?:IDLE|INITIALIZE|DESIGN_PLAN|DESIGN_REVIEW_NPASS|DESIGN_REVIEW|DESIGN_REVISE|DESIGN_APPROVED|"
+    r"ASSESSMENT|IMPLEMENTATION|CODE_REVIEW_NPASS|CODE_REVIEW|CODE_REVISE|CODE_APPROVED|"
     r"MERGE_SUMMARY_SENT|DONE|BLOCKED|None))"
 )
 _ARROW_RE = re.compile(r"(→)")

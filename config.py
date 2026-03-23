@@ -51,11 +51,13 @@ MSG_COLORS = {
 # Pipeline state -> progress percentage (%)
 STATE_PROGRESS = {
     "IDLE": 0,
+    "INITIALIZE": 5,
     "DESIGN_PLAN": 10,
     "DESIGN_REVIEW": 20,
     "DESIGN_REVIEW_NPASS": 25,
     "DESIGN_REVISE": 15,
     "DESIGN_APPROVED": 30,
+    "ASSESSMENT": 40,
     "IMPLEMENTATION": 50,
     "CODE_REVIEW": 70,
     "CODE_REVIEW_NPASS": 75,
@@ -88,11 +90,13 @@ FONT_SIZE_UPDATE_TIME: int = 10   # Last update time font size (px)
 # Phase 2: State display colors
 STATE_COLORS: dict = {
     "IDLE": COLORS["subtext"],
+    "INITIALIZE": COLORS["accent"],
     "DESIGN_PLAN": COLORS["accent"],
     "DESIGN_REVIEW": COLORS["accent"],
     "DESIGN_REVIEW_NPASS": COLORS["accent"],
     "DESIGN_REVISE": COLORS["accent"],
     "DESIGN_APPROVED": COLORS["accent"],
+    "ASSESSMENT": COLORS["peach"],
     "IMPLEMENTATION": COLORS["peach"],
     "CODE_REVIEW": COLORS["blue"],
     "CODE_REVIEW_NPASS": COLORS["blue"],
