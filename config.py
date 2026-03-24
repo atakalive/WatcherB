@@ -83,6 +83,10 @@ CARD_PADDING: int = 12            # ProjectCard inner padding (px)
 CARD_SPACING: int = 8             # Spacing between ProjectCards (px)
 CARD_BORDER_RADIUS: int = 6       # ProjectCard border radius (px)
 PROGRESS_BAR_HEIGHT: int = 8      # QProgressBar height (px)
+
+# Splash screen
+SPLASH_WIDTH: int = 360
+SPLASH_HEIGHT: int = 200
 FONT_SIZE_PROJECT_NAME: int = 14  # Project name font size (px)
 FONT_SIZE_STATE_LABEL: int = 12   # State label font size (px)
 FONT_SIZE_UPDATE_TIME: int = 10   # Last update time font size (px)

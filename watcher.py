@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 import config
 from discord_client import DiscordThread
 from message_parser import classify, parse_message
-from widgets import ProjectPanel, WatcherTrayIcon
+from widgets import ProjectPanel, SplashScreen, WatcherTrayIcon
 
 
 # Alternation order: longer patterns before shorter ones (longest-match-first).
@@ -116,12 +116,16 @@ class MessageLog(QTextBrowser):
 class MainWindow(QMainWindow):
     """Application main window."""
 
-    def __init__(self):
+    def __init__(self, splash: SplashScreen | None = None):
         super().__init__()
         self._force_quit = False
         self._setup_ui()
         self._setup_shortcuts()
         self._setup_tray()
+
+        if splash is not None:
+            splash.set_progress(50, "Connecting to Discord...")
+
         self._setup_discord()
 
     def _setup_ui(self):
@@ -389,8 +393,15 @@ def _build_global_qss() -> str:
 def main():
     app = QApplication(sys.argv)
     app.setStyleSheet(_build_global_qss())
-    window = MainWindow()
+
+    splash = SplashScreen()
+    splash.show()
+    splash.set_progress(0, "Initializing...")
+
+    window = MainWindow(splash=splash)
     window.show()
+    splash.close()
+
     sys.exit(app.exec())
 
 

@@ -9,8 +9,9 @@ from datetime import datetime
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtGui import QAction, QColor, QIcon, QPainter
 from PySide6.QtWidgets import (
+    QApplication,
     QLabel,
     QMenu,
     QProgressBar,
@@ -195,4 +196,84 @@ class WatcherTrayIcon(QSystemTrayIcon):
     def _on_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.show_requested.emit()
+
+
+class SplashScreen(QWidget):
+    """Startup splash screen with progress indicator."""
+
+    def __init__(self):
+        super().__init__()
+        self._drag_pos = None
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedSize(config.SPLASH_WIDTH, config.SPLASH_HEIGHT)
+        self._setup_ui()
+        self._center_on_screen()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        # App name label
+        self._title_label = QLabel("WatcherB")
+        self._title_label.setStyleSheet(
+            f"font-size: {config.FONT_SIZE_PROJECT_NAME + 4}px; "
+            f"font-weight: bold; "
+            f"color: {config.COLORS['text']}; "
+            f"background: transparent;"
+        )
+        self._title_label.setAlignment(Qt.AlignHCenter)
+        layout.addWidget(self._title_label, alignment=Qt.AlignHCenter)
+
+        # Status label
+        self._status_label = QLabel("Initializing...")
+        self._status_label.setStyleSheet(
+            f"font-size: {config.FONT_SIZE_STATE_LABEL}px; "
+            f"color: {config.COLORS['subtext']}; "
+            f"background: transparent;"
+        )
+        self._status_label.setAlignment(Qt.AlignHCenter)
+        layout.addWidget(self._status_label, alignment=Qt.AlignHCenter)
+
+        # Progress bar
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setTextVisible(False)
+        self._progress_bar.setFixedHeight(config.PROGRESS_BAR_HEIGHT)
+        layout.addWidget(self._progress_bar)
+
+    def _center_on_screen(self):
+        screen = QApplication.primaryScreen().geometry()
+        x = (screen.width() - self.width()) // 2
+        y = (screen.height() - self.height()) // 2
+        self.move(x, y)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QColor(config.COLORS["surface"]))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(self.rect(), 12, 12)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.LeftButton and self._drag_pos is not None:
+            new_pos = event.globalPosition().toPoint() - self._drag_pos
+            screen = QApplication.primaryScreen().availableGeometry()
+            clamped_x = max(screen.left(), min(new_pos.x(), screen.right() - self.width()))
+            clamped_y = max(screen.top(), min(new_pos.y(), screen.bottom() - self.height()))
+            self.move(clamped_x, clamped_y)
+            event.accept()
+
+    def set_progress(self, value: int, status: str) -> None:
+        """Update progress value (0-100) and status message."""
+        self._progress_bar.setValue(value)
+        self._status_label.setText(status)
+        QApplication.processEvents()
 
