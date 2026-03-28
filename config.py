@@ -13,7 +13,7 @@ HISTORY_LIMIT: int = int(os.getenv("HISTORY_LIMIT", "20"))
 
 # Command sending feature (default OFF. Set True and restart to enable)
 SEND_ENABLED: bool = os.getenv("SEND_ENABLED", "false").lower() in ("true", "1", "yes")
-GITLAB_BASE_URL: str = os.getenv("GITLAB_BASE_URL", "https://gitlab.com/atakalive")
+GITLAB_BASE_URL: str = os.getenv("GITLAB_BASE_URL", "https://gitlab.com/gitlab-org")
 
 # Icon (my_icon.png overrides default if present)
 _project_root = Path(__file__).parent
