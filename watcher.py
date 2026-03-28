@@ -254,10 +254,18 @@ class MainWindow(QMainWindow):
 
     def _update_project_from_message(self, content: str, created_at,
                                      msg_type: str):
-        """Update project panel from state transition messages."""
+        """Update project panel from state transition and info messages."""
+        parsed = parse_message(content, created_at)
+
+        # Issue 番号の更新（info メッセージ内の Target Issues）
+        if parsed.project and parsed.extra.get("issues"):
+            self._project_panel.update_issues(
+                parsed.project, parsed.extra["issues"]
+            )
+
+        # 状態遷移の更新（既存ロジック）
         if msg_type not in ("transition", "blocked", "done"):
             return
-        parsed = parse_message(content, created_at)
         if parsed.project and parsed.extra.get("to_state"):
             to_state = parsed.extra["to_state"]
             self._project_panel.update_project(

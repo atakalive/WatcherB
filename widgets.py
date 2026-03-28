@@ -70,6 +70,18 @@ class ProjectCard(QWidget):
         self._progress_bar.setFixedHeight(config.PROGRESS_BAR_HEIGHT)
         layout.addWidget(self._progress_bar)
 
+        # Issue label (clickable links to GitLab)
+        self._issue_label = QLabel("")
+        self._issue_label.setStyleSheet(
+            f"font-size: {config.FONT_SIZE_UPDATE_TIME}px; "
+            f"color: {config.COLORS['accent']}; "
+            f"background: transparent;"
+        )
+        self._issue_label.setOpenExternalLinks(True)
+        self._issue_label.setTextFormat(Qt.RichText)
+        self._issue_label.hide()
+        layout.addWidget(self._issue_label)
+
         # Last update time label
         self._time_label = QLabel("")
         self._time_label.setStyleSheet(
@@ -116,6 +128,25 @@ class ProjectCard(QWidget):
         local_time = timestamp.astimezone()
         self._time_label.setText(f"Updated: {local_time.strftime('%H:%M')}")
 
+        if new_state in ("IDLE", "DONE"):
+            self.update_issues([])
+
+    def update_issues(self, issues: list[int]) -> None:
+        """Update displayed Issue numbers. Empty list hides the label."""
+        if not issues:
+            self._issue_label.hide()
+            return
+        if self._state in ("IDLE", "DONE"):
+            return
+        base = config.GITLAB_BASE_URL.rstrip("/")
+        pj = self._project_name
+        links = ", ".join(
+            f'<a href="{base}/{pj}/-/issues/{n}" style="color: {config.COLORS["accent"]};">#{n}</a>'
+            for n in issues
+        )
+        self._issue_label.setText(f"Issue: {links}")
+        self._issue_label.show()
+
     @property
     def project_name(self) -> str:
         return self._project_name
@@ -153,6 +184,12 @@ class ProjectPanel(QScrollArea):
 
         card = self._cards[project_name]
         card.update_state(new_state, timestamp)
+
+    def update_issues(self, project_name: str, issues: list[int]) -> None:
+        """Update Issue numbers for a project card."""
+        card = self._cards.get(project_name)
+        if card is not None:
+            card.update_issues(issues)
 
     def get_state(self, project_name: str) -> Optional[str]:
         """Return the current state of the specified project."""
