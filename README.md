@@ -79,8 +79,13 @@ Use a separate bot from gokrax's notification bot (sharing the same bot causes c
 
 ### .env (environment-specific)
 
+**Required:**
+
 - `DISCORD_BOT_TOKEN` — Discord bot token
 - `CHANNEL_ID` — channel ID to monitor
+
+**Optional:**
+
 - `SEND_ENABLED` — command sending (`true`/`false`, default: `false`)
 - `HISTORY_LIMIT` — number of past messages to load on startup (default: `20`)
 - `FONT_SIZE` — message log font size in px (default: `20`)
