@@ -82,6 +82,12 @@ Use a separate bot from gokrax's notification bot (sharing the same bot causes c
 - `DISCORD_BOT_TOKEN` — Discord bot token
 - `CHANNEL_ID` — channel ID to monitor
 - `SEND_ENABLED` — command sending (`true`/`false`, default: `false`)
+- `HISTORY_LIMIT` — number of past messages to load on startup (default: `20`)
+- `FONT_SIZE` — message log font size in px (default: `20`)
+- `FONT_FAMILY` — font family (default: `Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace`)
+- `LINE_HEIGHT` — line height multiplier (default: `2.3`)
+- `WINDOW_WIDTH` — window width in px (default: `1000`)
+- `WINDOW_HEIGHT` — window height in px (default: `800`)
 
 ### Icon
 
@@ -89,10 +95,8 @@ Place `my_icon.png` (or `my_icon.jpg`) in the project root to use a custom windo
 
 ### config.py (UI settings)
 
-- `HISTORY_LIMIT` — number of past messages to load on startup
-- `FONT_SIZE` / `FONT_FAMILY` / `LINE_HEIGHT` — font settings
-- `WINDOW_WIDTH` / `WINDOW_HEIGHT` — window size
 - `COLORS` — theme colours (Catppuccin Mocha base)
+- Other UI constants not exposed via `.env`
 
 ## License
 

@@ -9,7 +9,7 @@ load_dotenv()
 # Discord
 DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
 CHANNEL_ID: int = int(os.getenv("CHANNEL_ID", "0"))  # #gokrax chennel ID
-HISTORY_LIMIT: int = 20  # Number of past messages to load on startup
+HISTORY_LIMIT: int = int(os.getenv("HISTORY_LIMIT", "20"))
 
 # Command sending feature (default OFF. Set True and restart to enable)
 SEND_ENABLED: bool = os.getenv("SEND_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -22,8 +22,8 @@ ICON_PATH: Path = _custom_icon if _custom_icon else _project_root / "icon.png"
 
 # UI
 WINDOW_TITLE: str = "WatcherB"
-WINDOW_WIDTH: int = 1000
-WINDOW_HEIGHT: int = 800
+WINDOW_WIDTH: int = int(os.getenv("WINDOW_WIDTH", "1000"))
+WINDOW_HEIGHT: int = int(os.getenv("WINDOW_HEIGHT", "800"))
 LEFT_PANEL_WIDTH: int = 200
 
 # Theme (Catppuccin Mocha based)
@@ -69,11 +69,11 @@ STATE_PROGRESS = {
 }
 
 # Font
-FONT_FAMILY: str = "Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace"
-FONT_SIZE: int = 20          # Message log font size (px)
+FONT_FAMILY: str = os.getenv("FONT_FAMILY", "Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace")
+FONT_SIZE: int = int(os.getenv("FONT_SIZE", "20"))
 FONT_SIZE_TIMESTAMP: int = 3  # Timestamp font size (px)
 FONT_SIZE_STATUS: int = 20   # Status bar font size (px)
-LINE_HEIGHT: float = 2.3     # Line height (multiplier)
+LINE_HEIGHT: float = float(os.getenv("LINE_HEIGHT", "2.3"))
 
 # Message log
 TIMESTAMP_WIDTH: int = 65         # Timestamp column width (px)
