@@ -1,27 +1,29 @@
 # WatcherB
 
-[gokrax](https://gitlab.com/atakalive/gokrax) パイプライン監視GUI。Discord チャンネルのメッセージをリアルタイム受信・表示する。
+[English](README.md) | [日本語](README_ja.md)
 
-## セットアップ
+A GUI monitor for the [gokrax](https://gitlab.com/atakalive/gokrax) pipeline. Receives and displays Discord channel messages in real time.
 
-### 1. リポジトリ取得
+## Setup
+
+### 1. Clone the repository
 
 ```bash
 git clone https://gitlab.com/atakalive/WatcherB.git
 cd WatcherB
 ```
 
-### 2. 依存パッケージ
+### 2. Dependencies
 
-Python 3.10 以上。
+Python 3.10 or later.
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. 設定ファイル
+### 3. Configuration
 
-`.env.example` をコピーして `.env` を作成し、各項目を埋める:
+Copy `.env.example` to `.env` and fill in the values:
 
 ```bash
 cp .env.example .env
@@ -33,61 +35,65 @@ CHANNEL_ID=your_discord_ch_id_here
 SEND_ENABLED=false
 ```
 
-コマンド送信機能を使う場合は `SEND_ENABLED=true` に変更する。
+Set `SEND_ENABLED=true` to enable command sending.
 
-`.env` は `.gitignore` に含まれており、git に push されない。
+`.env` is listed in `.gitignore` and will not be pushed to git.
 
-### 4. 起動
+### 4. Launch
 
 **Windows:**
-- `run.bat` — コンソールなし（pythonw）
-- `run_debug.bat` — コンソール付き（エラー表示）
+- `run.bat` — no console (pythonw)
+- `run_debug.bat` — with console (shows errors)
 
 **Linux / macOS:**
 ```bash
 python3 watcher.py
 ```
 
-初回はコンソール付きで起動し、エラーがないことを確認する。
+Start with the console the first time and check for errors.
 
-## Discord Bot の準備
+## Discord Bot Setup
 
-WatcherB は Discord bot 経由でメッセージを受信する。
+WatcherB receives messages through a Discord bot.
 
-1. [Discord Developer Portal](https://discord.com/developers/applications) でアプリケーション作成
-2. Bot → **MESSAGE CONTENT INTENT** を ON
-3. Bot Token を取得し `.env` に記入
-4. OAuth2 → URL Generator で `bot` スコープ、`Read Message History` + `View Channels` 権限で招待URLを生成
-5. 監視対象サーバーに bot を招待
+1. Create an application on the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Bot → enable **MESSAGE CONTENT INTENT**
+3. Copy the bot token and paste it into `.env`
+4. OAuth2 → URL Generator: select `bot` scope with `Read Message History` + `View Channels` permissions to generate an invite URL
+5. Invite the bot to the server you want to monitor
 
-gokrax の通知用 bot とは別の bot を用意すること（同一 bot だと gokrax 側で自己投稿除外とコマンド受付が矛盾する）。
+Use a separate bot from gokrax's notification bot (sharing the same bot causes conflicts between self-post filtering and command handling on the gokrax side).
 
-## 操作
+## Controls
 
-| キー | 動作 |
-|------|------|
-| Ctrl + = / Ctrl + + | フォント拡大 |
-| Ctrl + - | フォント縮小 |
-| Ctrl + 0 | フォントサイズリセット |
+| Key | Action |
+|-----|--------|
+| Ctrl + = / Ctrl + + | Increase font size |
+| Ctrl + - | Decrease font size |
+| Ctrl + 0 | Reset font size |
 
-- ウィンドウを閉じるとシステムトレイに格納される
-- トレイアイコン右クリック → Quit で終了
+- Closing the window minimises it to the system tray
+- Right-click the tray icon → Quit to exit
 
-## カスタマイズ
+## Customisation
 
-### .env（環境固有）
+### .env (environment-specific)
 
-- `DISCORD_BOT_TOKEN` — Discord bot トークン
-- `CHANNEL_ID` — 監視チャンネルID
-- `SEND_ENABLED` — コマンド送信機能（`true`/`false`、デフォルト: `false`）
+- `DISCORD_BOT_TOKEN` — Discord bot token
+- `CHANNEL_ID` — channel ID to monitor
+- `SEND_ENABLED` — command sending (`true`/`false`, default: `false`)
 
-### config.py（UI設定）
+### Icon
 
-- `HISTORY_LIMIT` — 起動時の過去メッセージ読み込み件数
-- `FONT_SIZE` / `FONT_FAMILY` / `LINE_HEIGHT` — フォント設定
-- `WINDOW_WIDTH` / `WINDOW_HEIGHT` — ウィンドウサイズ
-- `COLORS` — テーマカラー（Catppuccin Mocha ベース）
+Place `my_icon.png` (or `my_icon.jpg`) in the project root to use a custom window/tray icon. If not present, the default `icon.png` is used.
 
-## ライセンス
+### config.py (UI settings)
+
+- `HISTORY_LIMIT` — number of past messages to load on startup
+- `FONT_SIZE` / `FONT_FAMILY` / `LINE_HEIGHT` — font settings
+- `WINDOW_WIDTH` / `WINDOW_HEIGHT` — window size
+- `COLORS` — theme colours (Catppuccin Mocha base)
+
+## License
 
 MIT License
