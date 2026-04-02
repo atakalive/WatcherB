@@ -1,5 +1,7 @@
 # WatcherB 仕様書
 
+[English](spec.md) | [日本語](spec_ja.md)
+
 ## 目次
 
 - [概要](#概要)
@@ -20,7 +22,7 @@
 
 ## 概要
 
-[gokrax](https://gitlab.com/atakalive/gokrax) パイプラインの進捗をリアルタイム監視するデスクトップGUI。
+[gokrax](https://github.com/atakalive/gokrax) パイプラインの進捗をリアルタイム監視するデスクトップGUI。
 gokraxの進捗確認にDiscordクライアントを開き続ける不便さを解消する。
 Discord チャンネルのメッセージを受信し、プロジェクトごとのパイプライン状態を可視化する。
 
@@ -36,7 +38,7 @@ Discord チャンネルのメッセージを受信し、プロジェクトごと
 ### 1. リポジトリ取得
 
 ```bash
-git clone https://gitlab.com/atakalive/WatcherB.git
+git clone https://github.com/atakalive/WatcherB.git
 cd WatcherB
 ```
 
@@ -64,12 +66,24 @@ WatcherB は受信用の Discord bot を使用する。gokrax とは別のbotを
 cp .env.example .env
 ```
 
-`.env` を編集:
+`.env` を編集（必須項目）:
 
 ```
 DISCORD_BOT_TOKEN=your_bot_token_here
 CHANNEL_ID=123456789012345678    # gokrax通知チャンネルのID
 SEND_ENABLED=true                # コマンド送信を使う場合
+GITLAB_BASE_URL=https://gitlab.com/YOUR_NAMESPACE  # GitLab Issue リンク用
+```
+
+オプション項目（未指定時はデフォルト値を使用）:
+
+```
+HISTORY_LIMIT=20                 # 起動時に読み込む過去メッセージ数
+WINDOW_WIDTH=1000                # ウィンドウ幅
+WINDOW_HEIGHT=800                # ウィンドウ高さ
+FONT_SIZE=20                     # メッセージログのフォントサイズ
+FONT_FAMILY=Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace
+LINE_HEIGHT=2.3                  # メッセージログの行高
 ```
 
 ### 5. 起動
@@ -101,7 +115,7 @@ python3 watcher.py
 │  │ TrajOpt      │  │       _PLAN →           │  │
 │  │ ████████ DONE│  │       DESIGN_REVIEW     │  │
 │  │              │  │ 13:09 [gokrax] 催促:    │  │
-│  │              │  │       kaneko             │  │
+│  │ Issue: #12   │  │       kaneko             │  │
 │  └──────────────┘  └─────────────────────────┘  │
 │                                                  │
 │  [Status Bar: Connected | Last msg: 13:13]       │
@@ -115,31 +129,47 @@ python3 watcher.py
 
 ## 画面構成
 
-### 1. メインウィンドウ
+### 1. スプラッシュスクリーン
 
-- **左ペイン: プロジェクトステータスパネル**
-  - プロジェクトごとにカード表示
+起動時に表示されるフレームレスウィンドウ（360×200px）。
+
+- アプリ名「WatcherB」とステータスメッセージを表示
+- プログレスバーで初期化進捗を表示
+- ドラッグで移動可能（画面端でクランプ）
+- メインウィンドウの準備完了後に自動で閉じる
+
+### 2. メインウィンドウ
+
+- **左ペイン: プロジェクトステータスパネル**（幅200px固定）
+  - プロジェクトごとにカード表示（メッセージ受信時に自動生成）
   - 現在の状態（IDLE / INITIALIZE / DESIGN_PLAN / ... / DONE）
   - パイプライン進捗バー（状態に応じた進捗率）
+  - GitLab Issue リンク（クリックでブラウザ表示、`GITLAB_BASE_URL` ベース）
   - 最終更新時刻
+  - IDLE / DONE 状態ではIssueリンクを非表示
 
 - **右ペイン: メッセージログ**
   - 監視チャンネルのメッセージをリアルタイム表示
+  - 起動時に過去メッセージを `HISTORY_LIMIT` 件ロード
   - タイムスタンプ + メッセージ内容
   - 自動スクロール（最新メッセージを追従）
+  - ユーザが上方にスクロールすると自動スクロール一時停止、最下部に戻ると再開
   - メッセージ種別で色分け
+  - 状態名と矢印（→）をハイライト表示
+  - Markdown太字（`**text**`）をHTML `<b>` に変換
 
 - **ステータスバー**
   - 接続状態（Connected / Disconnected / Reconnecting）
   - 最終受信メッセージの時刻
 
-### 2. システムトレイ
+### 3. システムトレイ
 
-- 最小化時にシステムトレイに格納
+- 最小化時にシステムトレイに格納（ウィンドウ閉じ = トレイ格納）
 - トレイアイコンクリックで復元
-- 状態変化時にトレイ通知（バルーン）
+- コンテキストメニュー: Show / Exit
+- BLOCKED 状態遷移時にトレイ通知（バルーン）
 
-### 3. コマンド送信（オプション）
+### 4. コマンド送信（オプション）
 
 - `SEND_ENABLED=true`（.env）で有効化。デフォルト OFF
 - メインパネル下部にテキスト入力欄が表示される
@@ -148,7 +178,7 @@ python3 watcher.py
 
 ## メッセージ分類
 
-message_parser.py で以下の4種別に分類する:
+message_parser.py で以下の4種別に分類する（判定順序は上から優先）:
 
 | 種別 | 判定条件 |
 |------|----------|
@@ -156,6 +186,22 @@ message_parser.py で以下の4種別に分類する:
 | `done` | `→ DONE` を含む |
 | `transition` | `[PJ] STATE_A → STATE_B` パターンにマッチ |
 | `info` | 上記に該当しないもの |
+
+### ParsedMessage 構造
+
+```python
+@dataclass
+class ParsedMessage:
+    msg_type: str           # "blocked" / "done" / "transition" / "info"
+    project: Optional[str]  # プロジェクト名（[PJ] から抽出）
+    raw_text: str           # 元メッセージ
+    timestamp: str          # HH:MM 形式
+    extra: dict             # 追加情報（以下参照）
+```
+
+`extra` フィールド:
+- transition / blocked / done: `from_state`, `to_state`
+- info（`Target Issues:` を含む場合）: `issues`（Issue番号のリスト）
 
 ### メッセージパターン
 
@@ -185,6 +231,13 @@ message_parser.py で以下の4種別に分類する:
 **#N: title** (`hash`)
   🟢 **reviewer**: APPROVE — comment
   🟡 **reviewer**: P1 — comment
+```
+
+#### Target Issues
+```
+**[PJ] Target Issues:**
+#12: Issue title
+#34: Issue title
 ```
 
 ## テーマ
@@ -217,7 +270,9 @@ message_parser.py で以下の4種別に分類する:
 | 状態グループ | 色 |
 |---|---|
 | IDLE | subtext（グレー） |
+| INITIALIZE | accent（青） |
 | DESIGN_* | accent（青） |
+| ASSESSMENT | peach（オレンジ） |
 | IMPLEMENTATION | peach（オレンジ） |
 | CODE_* | blue（青） |
 | MERGE_SUMMARY_SENT / DONE | green（緑） |
@@ -230,12 +285,13 @@ IDLE                →   0%
 INITIALIZE          →   5%
 DESIGN_PLAN         →  10%
 DESIGN_REVIEW       →  20%
+DESIGN_REVIEW_NPASS →  25%  (再レビュー)
 DESIGN_REVISE       →  15%  (後退)
 DESIGN_APPROVED     →  30%
+ASSESSMENT          →  40%
 IMPLEMENTATION      →  50%
-CODE_TEST           →  60%
-CODE_TEST_FIX       →  55%  (後退)
 CODE_REVIEW         →  70%
+CODE_REVIEW_NPASS   →  75%  (再レビュー)
 CODE_REVISE         →  65%  (後退)
 CODE_APPROVED       →  85%
 MERGE_SUMMARY_SENT  →  95%
@@ -251,12 +307,21 @@ BLOCKED             →  現在値で停止（赤表示）
 - Gateway Intents: `MESSAGE_CONTENT`, `GUILDS`, `GUILD_MESSAGES`
 - 監視対象: `.env` の `CHANNEL_ID` で指定した1チャンネル
 - `SEND_ENABLED=true` 時のみ送信機能有効
+- 自分自身（bot）のメッセージは無視
 
 ### イベントループ共存
 
 - discord.py の asyncio ループを QThread 内で実行
 - メッセージ受信時に Qt Signal でメインスレッドに通知
 - GUIの操作は全てメインスレッドで実行
+
+### Signal
+
+| Signal | 引数 | 説明 |
+|--------|------|------|
+| `message_received` | `dict` | 新規メッセージ受信時 |
+| `history_loaded` | `list` | 起動時の過去メッセージロード完了時 |
+| `connection_changed` | `str` | 接続状態変化時（`"connected"` / `"disconnected"` / `"reconnecting"`） |
 
 ### 再接続
 
@@ -267,48 +332,72 @@ BLOCKED             →  現在値で停止（赤表示）
 
 ### .env（秘匿・環境固有）
 
+必須:
+
 ```
 DISCORD_BOT_TOKEN=xxx    # Discord bot token
 CHANNEL_ID=0             # 監視対象チャンネルID
 SEND_ENABLED=true        # コマンド送信機能 (true/false)
+GITLAB_BASE_URL=https://gitlab.com/YOUR_NAMESPACE  # GitLab Issue リンクのベースURL
+```
+
+オプション（デフォルト値あり）:
+
+```
+HISTORY_LIMIT=20         # 起動時に読み込む過去メッセージ数
+WINDOW_WIDTH=1000        # ウィンドウ幅 (px)
+WINDOW_HEIGHT=800        # ウィンドウ高さ (px)
+FONT_SIZE=20             # メッセージログのフォントサイズ (px)
+FONT_FAMILY=Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace
+LINE_HEIGHT=2.3          # メッセージログの行高
 ```
 
 ### config.py（アプリケーション設定）
 
 .env の値は `os.getenv()` 経由で読み込む。UI設定・テーマ・進捗マッピング等はconfig.pyに直接定義。
 
+### アイコン
+
+カスタムアイコンに対応。以下の優先順位で検索:
+1. `my_icon.png`
+2. `my_icon.jpg`
+3. `icon.png`（デフォルト）
+
 ## ファイル構成
 
 ```
 WatcherB/
-├── watcher.py          # エントリポイント + QMainWindow
+├── watcher.py          # エントリポイント + QMainWindow + MessageLog
 ├── discord_client.py   # Discord bot (QThread)
 ├── message_parser.py   # メッセージ解析・分類
-├── widgets.py          # カスタムウィジェット（ProjectCard, ProjectPanel）
+├── widgets.py          # カスタムウィジェット（ProjectCard, ProjectPanel, WatcherTrayIcon, SplashScreen）
 ├── config.py           # 設定（.envから秘匿値読み込み + UI設定）
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
-├── icon.jpg
+├── .gitattributes
+├── icon.png            # デフォルトアイコン
 ├── run.bat             # Windows起動（コンソールなし）
 ├── run_debug.bat       # Windows起動（コンソール付き）
 ├── LICENSE
 ├── README.md
+├── README_ja.md
 ├── CLAUDE.md           # 開発ガイド
 └── docs/
-    └── spec_ja.md      # 本仕様書
+    ├── spec.md         # Specification (English)
+    └── spec_ja.md      # 本仕様書（日本語）
 ```
 
 ## キーボードショートカット
 
 | キー | 動作 |
 |------|------|
-| Ctrl + = / Ctrl + + | フォント拡大 |
-| Ctrl + - | フォント縮小 |
-| Ctrl + 0 | フォントサイズリセット |
+| Ctrl + = / Ctrl + + | フォント拡大（最大30px） |
+| Ctrl + - | フォント縮小（最小8px） |
+| Ctrl + 0 | フォントサイズリセット（13px） |
 
 ## 制約
 
 - **1インスタンスで1チャンネル監視**
 - **QTextBrowser の CSS サポートが限定的**: `<table>` ベースレイアウト、`<font color>` で色指定。inline style の `border-left`, `padding-left` 等は効かない
-
+- **タイムスタンプはローカルタイムゾーンに変換して表示**

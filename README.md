@@ -2,14 +2,14 @@
 
 [English](README.md) | [日本語](README_ja.md)
 
-A GUI monitor for the [gokrax](https://gitlab.com/atakalive/gokrax) pipeline. Receives and displays Discord channel messages in real time.
+A GUI monitor for the [gokrax](https://github.com/atakalive/gokrax) pipeline. Receives and displays Discord channel messages in real time.
 
 ## Setup
 
 ### 1. Clone the repository
 
 ```bash
-git clone https://gitlab.com/atakalive/WatcherB.git
+git clone https://github.com/atakalive/WatcherB.git
 cd WatcherB
 ```
 
@@ -101,6 +101,10 @@ Place `my_icon.png` (or `my_icon.jpg`) in the project root to use a custom windo
 
 - `COLORS` — theme colours (Catppuccin Mocha base)
 - Other UI constants not exposed via `.env`
+
+## Specification
+
+For detailed technical specification, see [docs/spec.md](docs/spec.md).
 
 ## License
 
