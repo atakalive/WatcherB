@@ -235,10 +235,11 @@ class ParsedMessage:
 
 #### Target Issues
 ```
-**[PJ] Target Issues:**
+[PJ] 対象Issue:
 #12: Issue title
 #34: Issue title
 ```
+Note: With `PROMPT_LANG=en`, the format is `[PJ] Target Issues:` instead.
 
 ## Theme
 

@@ -77,7 +77,7 @@ def parse_message(content: str, created_at: datetime) -> ParsedMessage:
             extra["from_state"] = transition[0]
             extra["to_state"] = transition[1]
 
-    if msg_type == "info" and project and "Target Issues:" in content:
+    if msg_type == "info" and project and ("Target Issues:" in content or "対象Issue:" in content):
         issue_match = re.findall(r"^#(\d+):", content, re.MULTILINE)
         if issue_match:
             extra["issues"] = [int(n) for n in issue_match]
