@@ -33,6 +33,7 @@ cp .env.example .env
 DISCORD_BOT_TOKEN=your_bot_token_here
 CHANNEL_ID=your_discord_ch_id_here
 SEND_ENABLED=false
+GITLAB_BASE_URL=https://gitlab.com/YOUR_NAMESPACE
 ```
 
 Set `SEND_ENABLED=true` to enable command sending.
@@ -59,7 +60,7 @@ WatcherB receives messages through a Discord bot.
 1. Create an application on the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Bot → enable **MESSAGE CONTENT INTENT**
 3. Copy the bot token and paste it into `.env`
-4. OAuth2 → URL Generator: select `bot` scope with `Read Message History` + `View Channels` permissions to generate an invite URL
+4. OAuth2 → URL Generator: select `bot` scope with `Read Message History` + `Send Messages` + `View Channels` permissions to generate an invite URL
 5. Invite the bot to the server you want to monitor
 
 Use a separate bot from gokrax's notification bot (sharing the same bot causes conflicts between self-post filtering and command handling on the gokrax side).
@@ -84,6 +85,7 @@ Use a separate bot from gokrax's notification bot (sharing the same bot causes c
 - `DISCORD_BOT_TOKEN` — Discord bot token
 - `CHANNEL_ID` — channel ID to monitor
 - `SEND_ENABLED` — command sending (`true`/`false`, default: `false`)
+- `GITLAB_BASE_URL` — base URL for GitLab issue links (default: `https://gitlab.com/gitlab-org`)
 
 **Optional:**
 - `HISTORY_LIMIT` — number of past messages to load on startup (default: `20`)
