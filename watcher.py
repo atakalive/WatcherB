@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 
 import config
 from discord_client import DiscordThread
-from message_parser import classify, parse_message
+from message_parser import classify, extract_project, parse_message
 from widgets import ProjectPanel, SplashScreen, WatcherTrayIcon
 
 
@@ -33,6 +33,7 @@ _STATE_RE = re.compile(
     r"MERGE_SUMMARY_SENT|DONE|BLOCKED|None))"
 )
 _ARROW_RE = re.compile(r"(→)")
+_ISSUE_REF_RE = re.compile(r"(?<![\w#])#(\d+)")
 
 
 def _markdown_to_html(text: str) -> str:
@@ -43,6 +44,22 @@ def _markdown_to_html(text: str) -> str:
     Nested or multi-line cases are not handled.
     """
     return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+
+
+def _linkify_issues(text: str, project: str) -> str:
+    """Replace #N with clickable GitLab Issue links.
+
+    Call on text already processed by html.escape() but BEFORE
+    _highlight_states() (to avoid matching color codes like #89b4fa).
+    ``project`` is the repository name extracted from [PJ] prefix.
+    """
+    base = config.GITLAB_BASE_URL.rstrip("/")
+    safe_project = html.escape(project, quote=True)
+    def _replace(m: re.Match) -> str:
+        num = m.group(1)
+        url = f"{base}/{safe_project}/-/issues/{num}"
+        return f'<a href="{url}" style="color: {config.COLORS["accent"]};">#{num}</a>'
+    return _ISSUE_REF_RE.sub(_replace, text)
 
 
 def _highlight_states(text: str) -> str:
@@ -66,7 +83,7 @@ class MessageLog(QTextBrowser):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setReadOnly(True)
-        self.setOpenExternalLinks(False)
+        self.setOpenExternalLinks(True)
         self._auto_scroll = True
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_value_changed)
         self.verticalScrollBar().rangeChanged.connect(self._on_range_changed)
@@ -79,11 +96,17 @@ class MessageLog(QTextBrowser):
         subtext = config.COLORS["subtext"]
         text_color = config.COLORS["text"]
 
+        project = extract_project(content)
+
         lines = content.split("\n")
 
         rows = ""
         for i, line in enumerate(lines):
-            esc = _markdown_to_html(_highlight_states(html.escape(line)))
+            esc = html.escape(line)
+            if project:
+                esc = _linkify_issues(esc, project)
+            esc = _highlight_states(esc)
+            esc = _markdown_to_html(esc)
             if i == 0:
                 rows += (
                     f'<tr>'

@@ -41,7 +41,7 @@ def classify(content: str) -> str:
     return "info"
 
 
-def _extract_project(content: str) -> Optional[str]:
+def extract_project(content: str) -> Optional[str]:
     """Extract project name from [PJ] or [Queue][PJ] prefix."""
     matches = _PROJECT_RE.findall(content)
     if not matches:
@@ -67,7 +67,7 @@ def extract_transition(content: str) -> Optional[tuple]:
 def parse_message(content: str, created_at: datetime) -> ParsedMessage:
     """Classify a message and return it as structured data."""
     msg_type = classify(content)
-    project = _extract_project(content)
+    project = extract_project(content)
     timestamp = created_at.strftime("%H:%M")
 
     extra = {}
