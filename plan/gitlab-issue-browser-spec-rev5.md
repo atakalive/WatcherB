@@ -730,6 +730,9 @@ def _process_detail_request(self, project, iid, request_id):
 ```python
 def _on_project_clicked(self, project: str):
     # ... mode switching logic ...
+    # [v2] euler:C-3: reset detail pane on project switch (unconditional — §7.5)
+    self._issue_detail.show_blank()
+    self._current_detail_request_id = -1
     # [v5] euler:C-1 + dijkstra:C-1: check cache for (issues, truncated) tuple
     cached = self._issue_cache.get((project, state))
     if cached is not None:
@@ -738,9 +741,6 @@ def _on_project_clicked(self, project: str):
         return
     rid = self._gitlab_thread.fetch_issues(project, state)
     self._current_list_request_id = rid
-    # [v2] euler:C-3: reset detail pane on project switch
-    self._issue_detail.show_blank()
-    self._current_detail_request_id = -1
 
 def _on_issues_loaded(self, project: str, state: str, request_id: int, truncated: bool, issues: list):
     # [v2] dijkstra:C-4 + euler:C-2: discard stale responses
