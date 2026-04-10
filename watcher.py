@@ -12,8 +12,10 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QSplitter,
+    QStackedWidget,
     QStatusBar,
     QSystemTrayIcon,
+    QTabBar,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
 import config
 from discord_client import DiscordThread
 from issue_browser.gitlab_client import GitLabThread
+from issue_browser.widgets import IssueDetailWidget, IssueListWidget
 from message_parser import classify, extract_project, parse_message
 from widgets import ProjectPanel, SplashScreen, WatcherTrayIcon
 
@@ -143,6 +146,7 @@ class MainWindow(QMainWindow):
     def __init__(self, splash: SplashScreen | None = None):
         super().__init__()
         self._force_quit = False
+        self._selected_project: str | None = None
         self._setup_ui()
         self._setup_shortcuts()
         self._setup_tray()
@@ -174,7 +178,28 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(right_container)
         right_layout.setContentsMargins(0, 0, 0, 4)
         right_layout.setSpacing(4)
-        right_layout.addWidget(self._message_log)
+
+        # Tab bar (Normal Mode では非表示)
+        self._tab_bar = QTabBar()
+        self._tab_bar.addTab("Pipeline")
+        self._tab_bar.addTab("Issues")
+        self._tab_bar.hide()
+        right_layout.addWidget(self._tab_bar)
+
+        # QStackedWidget: idx 0 = MessageLog, idx 1 = Issue splitter
+        self._right_stack = QStackedWidget()
+        self._right_stack.addWidget(self._message_log)  # index 0
+
+        self._issue_list = IssueListWidget()
+        self._issue_detail = IssueDetailWidget()
+        self._issue_splitter = QSplitter(Qt.Horizontal)
+        self._issue_splitter.addWidget(self._issue_list)
+        self._issue_splitter.addWidget(self._issue_detail)
+        detail_width = max(100, config.WINDOW_WIDTH - config.LEFT_PANEL_WIDTH - config.ISSUE_LIST_WIDTH)
+        self._issue_splitter.setSizes([config.ISSUE_LIST_WIDTH, detail_width])
+        self._right_stack.addWidget(self._issue_splitter)  # index 1
+
+        right_layout.addWidget(self._right_stack)
 
         if config.SEND_ENABLED:
             self._send_input = QLineEdit()
@@ -199,11 +224,16 @@ class MainWindow(QMainWindow):
         status_bar.addPermanentWidget(self._last_msg_label)
         self.setStatusBar(status_bar)
 
+        # Signal connections (after tab bar hidden + all tabs added — §6.3)
+        self._tab_bar.currentChanged.connect(self._on_tab_changed)
+        self._project_panel.project_clicked.connect(self._on_project_clicked)
+
     def _setup_shortcuts(self):
         QShortcut(QKeySequence("Ctrl+="), self, self._zoom_in)
         QShortcut(QKeySequence("Ctrl++"), self, self._zoom_in)
         QShortcut(QKeySequence("Ctrl+-"), self, self._zoom_out)
         QShortcut(QKeySequence("Ctrl+0"), self, self._zoom_reset)
+        QShortcut(QKeySequence(Qt.Key_Escape), self, self._on_escape)
 
     def _zoom_in(self):
         config.FONT_SIZE = min(config.FONT_SIZE + 1, 30)
@@ -315,6 +345,37 @@ class MainWindow(QMainWindow):
         self._status_label.setText(text)
         self._status_label.setStyleSheet(f"color: {color};")
 
+    def _on_project_clicked(self, project_path: str):
+        if self._selected_project == project_path:
+            # 同じ PJ 再クリック → Normal Mode
+            self._exit_issue_mode()
+            return
+        # Issue Mode 遷移（新規 or 異なる PJ）
+        self._selected_project = project_path
+        self._project_panel.select_project(project_path)
+        self._right_stack.setCurrentIndex(1)
+        self._tab_bar.setCurrentIndex(1)  # Issues tab 強制アクティブ
+        self._tab_bar.show()
+
+    def _on_tab_changed(self, index: int):
+        if self._selected_project is None:
+            return  # §6.3: 初期化中の spurious signal を無視
+        if index == 0:  # Pipeline tab → MessageLog
+            self._right_stack.setCurrentIndex(0)
+        elif index == 1:  # Issues tab → Issue splitter
+            self._right_stack.setCurrentIndex(1)
+
+    def _exit_issue_mode(self):
+        self._selected_project = None
+        self._project_panel.select_project(None)
+        # §6.2: setCurrentIndex(0) を tab bar 非表示の **前** に呼ぶ
+        self._right_stack.setCurrentIndex(0)
+        self._tab_bar.hide()
+
+    def _on_escape(self):
+        if self._selected_project is not None:
+            self._exit_issue_mode()
+
     def _on_send(self) -> None:
         """Called on Enter key press in the text input. Send content to the channel."""
         if self._send_input is None:
@@ -422,6 +483,38 @@ def _build_global_qss() -> str:
         }}
         QLineEdit:focus {{
             border-color: {c["accent"]};
+        }}
+        QTabBar {{
+            background-color: {c["surface"]};
+            border: none;
+        }}
+        QTabBar::tab {{
+            background-color: {c["surface"]};
+            color: {c["subtext"]};
+            padding: 8px 16px;
+            border: none;
+            border-bottom: 2px solid transparent;
+        }}
+        QTabBar::tab:selected {{
+            color: {c["text"]};
+            border-bottom: 2px solid {c["accent"]};
+        }}
+        QComboBox {{
+            background-color: {c["surface"]};
+            color: {c["text"]};
+            border: 1px solid {c["subtext"]};
+            border-radius: 4px;
+            padding: 4px 8px;
+        }}
+        QPushButton {{
+            background-color: {c["surface"]};
+            color: {c["text"]};
+            border: none;
+            border-radius: 4px;
+            padding: 6px 12px;
+        }}
+        QPushButton:hover {{
+            background-color: {c["bg"]};
         }}
     """
 

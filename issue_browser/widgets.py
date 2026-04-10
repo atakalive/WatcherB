@@ -1,4 +1,6 @@
-"""Issue browser widgets for GitLab issue list display."""
+"""Issue browser widgets for GitLab issue list and detail display."""
+
+import html
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
@@ -8,11 +10,13 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
 import config
+from issue_browser.markdown import md_to_html
 
 
 class IssueListWidget(QWidget):
@@ -126,3 +130,75 @@ class IssueListWidget(QWidget):
     def current_filter(self) -> str:
         """現在のフィルタの API 値を返す。"""
         return self._filter_combo.currentData()
+
+
+class IssueDetailWidget(QTextBrowser):
+    """Issue 詳細表示ウィジェット。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setReadOnly(True)
+        self.setOpenExternalLinks(True)
+
+    def show_detail(self, detail_dict: dict) -> None:
+        """Issue 詳細を HTML で描画する。"""
+        c = config.COLORS
+        iid = detail_dict["iid"]
+        title = html.escape(detail_dict.get("title", ""))
+        state = html.escape(detail_dict.get("state", "")).upper()
+        labels = detail_dict.get("labels", [])
+        labels_str = ", ".join(html.escape(l) for l in labels)
+        body = detail_dict.get("description", "") or ""
+        body_html = md_to_html(body)
+        notes = detail_dict.get("_notes", [])
+        notes_truncated = detail_dict.get("_notes_truncated", False)
+
+        parts = []
+        parts.append(f"<h3>#{iid} {title}</h3>")
+        parts.append(
+            f'<div><span style="color: {c["accent"]};">{state}</span> {labels_str}</div>'
+        )
+        parts.append(f"<div>{body_html}</div>")
+        parts.append("<hr>")
+        parts.append(f"<div><b>--- Comments ({len(notes)}) ---</b></div>")
+
+        for note in notes:
+            author_obj = note.get("author")
+            name = (
+                author_obj.get("name", "unknown")
+                if isinstance(author_obj, dict)
+                else "unknown"
+            )
+            name = html.escape(name)
+            date = note.get("created_at", "")[:10]
+            note_body_html = md_to_html(note.get("body", ""))
+            parts.append(
+                f'<div><span style="color: {c["accent"]};">{name}</span> '
+                f'<span style="color: {c["subtext"]}; font-size: small;">{date}</span></div>'
+            )
+            parts.append(f"<div>{note_body_html}</div>")
+
+        if notes_truncated:
+            parts.append(
+                f'<div style="color: {c["subtext"]};">Showing first {len(notes)} '
+                f"comments (list may be incomplete)</div>"
+            )
+
+        self.setHtml("\n".join(parts))
+
+    def show_blank(self) -> None:
+        """空白表示。"""
+        self.clear()
+
+    def show_loading(self) -> None:
+        """Loading 状態を表示。"""
+        self.setHtml(
+            f'<p align="center" style="color: {config.COLORS["subtext"]};">Loading...</p>'
+        )
+
+    def show_error(self, message: str) -> None:
+        """エラー状態を表示。"""
+        escaped = html.escape(message)
+        self.setHtml(
+            f'<p style="color: {config.COLORS["red"]};">Error: {escaped}</p>'
+        )
