@@ -87,18 +87,22 @@ class TestProjectSwitch:
 
 
 class TestNullProjectCard:
-    def test_none_project_path_card_does_not_emit(self, window, qtbot):
-        """project_path=None card click → project_clicked not emitted."""
+    def test_none_project_path_card_does_not_trigger_issue_mode(self, window):
+        """project_path=None dynamic card in ProjectPanel → no mode transition."""
+        from datetime import datetime, timezone
+
         from PySide6.QtCore import QEvent, QPointF, Qt
         from PySide6.QtGui import QMouseEvent
 
-        from widgets import ProjectCard
+        # Create a dynamic card (project_path=None) inside the actual ProjectPanel
+        panel = window._project_panel
+        panel.update_project("dynamic_pj", "IDLE", datetime.now(tz=timezone.utc))
+        card = panel._dynamic_cards["dynamic_pj"]
+        assert card.project_path is None
 
-        card = ProjectCard(display_name="dynamic", project_path=None)
-        qtbot.addWidget(card)
-
-        signals = []
-        card.clicked.connect(lambda p: signals.append(p))
+        # Track signals on the panel relay (the path MainWindow listens to)
+        relay_signals = []
+        panel.project_clicked.connect(lambda p: relay_signals.append(p))
 
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
@@ -110,6 +114,7 @@ class TestNullProjectCard:
         )
         card.mousePressEvent(event)
 
-        assert signals == []
+        # Neither the relay signal nor MainWindow state should change
+        assert relay_signals == []
         assert window._selected_project is None
         assert window._tab_bar.isHidden() is True
