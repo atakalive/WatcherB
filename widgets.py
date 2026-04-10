@@ -27,12 +27,18 @@ import config
 class ProjectCard(QWidget):
     """Status card for a single project."""
 
-    def __init__(self, project_name: str, parent=None):
+    clicked = Signal(str)  # project_path を emit
+
+    def __init__(self, display_name: str, project_path: str | None = None, parent=None):
         super().__init__(parent)
-        self._project_name = project_name
-        self._state = "IDLE"
+        self._display_name = display_name
+        self._project_path = project_path
+        self._state: str | None = None
+        self._selected = False
         self._progress_value = 0
         self._setup_ui()
+        if self._project_path is not None:
+            self.setCursor(Qt.PointingHandCursor)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -43,7 +49,7 @@ class ProjectCard(QWidget):
         layout.setSpacing(4)
 
         # Project name label
-        self._name_label = QLabel(self._project_name)
+        self._name_label = QLabel(self._display_name)
         self._name_label.setStyleSheet(
             f"font-size: {config.FONT_SIZE_PROJECT_NAME}px; "
             f"font-weight: bold; "
@@ -53,13 +59,7 @@ class ProjectCard(QWidget):
         layout.addWidget(self._name_label)
 
         # State label
-        initial_color = config.STATE_COLORS.get("IDLE", config.COLORS["subtext"])
-        self._state_label = QLabel("IDLE")
-        self._state_label.setStyleSheet(
-            f"font-size: {config.FONT_SIZE_STATE_LABEL}px; "
-            f"color: {initial_color}; "
-            f"background: transparent;"
-        )
+        self._state_label = QLabel("")
         layout.addWidget(self._state_label)
 
         # Progress bar
@@ -99,6 +99,22 @@ class ProjectCard(QWidget):
             f"}}"
         )
 
+        # State label initial value
+        if self._state is None:
+            self._state_label.setText("─")
+            self._state_label.setStyleSheet(
+                f"font-size: {config.FONT_SIZE_STATE_LABEL}px; "
+                f"color: {config.COLORS['subtext']}; background: transparent;"
+            )
+            self._progress_bar.setValue(0)
+        else:
+            color = config.STATE_COLORS.get(self._state, config.COLORS["subtext"])
+            self._state_label.setText(self._state)
+            self._state_label.setStyleSheet(
+                f"font-size: {config.FONT_SIZE_STATE_LABEL}px; "
+                f"color: {color}; background: transparent;"
+            )
+
     def update_state(self, new_state: str, timestamp: datetime):
         """Update state and refresh display."""
         self._state = new_state
@@ -131,6 +147,25 @@ class ProjectCard(QWidget):
         if new_state in ("IDLE", "DONE"):
             self.update_issues([])
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self._project_path is not None:
+            self.clicked.emit(self._project_path)
+        super().mousePressEvent(event)
+
+    def set_selected(self, selected: bool):
+        self._selected = selected
+        if selected:
+            self.setStyleSheet(
+                f"ProjectCard {{ background-color: {config.COLORS['surface']}; "
+                f"border-radius: {config.CARD_BORDER_RADIUS}px; "
+                f"border-left: 3px solid {config.COLORS['accent']}; }}"
+            )
+        else:
+            self.setStyleSheet(
+                f"ProjectCard {{ background-color: {config.COLORS['surface']}; "
+                f"border-radius: {config.CARD_BORDER_RADIUS}px; }}"
+            )
+
     def update_issues(self, issues: list[int]) -> None:
         """Update displayed Issue numbers. Empty list hides the label."""
         if not issues:
@@ -139,7 +174,7 @@ class ProjectCard(QWidget):
         if self._state in ("IDLE", "DONE"):
             return
         base = config.GITLAB_BASE_URL.rstrip("/")
-        pj = self._project_name
+        pj = self._display_name
         links = ", ".join(
             f'<a href="{base}/{pj}/-/issues/{n}" style="color: {config.COLORS["accent"]};">#{n}</a>'
             for n in issues
@@ -148,20 +183,30 @@ class ProjectCard(QWidget):
         self._issue_label.show()
 
     @property
-    def project_name(self) -> str:
-        return self._project_name
+    def project_path(self) -> str | None:
+        return self._project_path
 
     @property
-    def state(self) -> str:
+    def display_name(self) -> str:
+        return self._display_name
+
+    @property
+    def state(self) -> str | None:
         return self._state
 
 
 class ProjectPanel(QScrollArea):
     """Scrollable panel that arranges ProjectCards vertically."""
 
+    project_clicked = Signal(str)  # project_path をリレー
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._cards: dict[str, ProjectCard] = {}
+        self._path_cards: dict[str, ProjectCard] = {}     # キー: project_path
+        self._dynamic_cards: dict[str, ProjectCard] = {}   # キー: discord_name
+        self._name_to_path: dict[str, str] = {}            # Discord短縮名 → フルパス
+        self._collided_names: set[str] = set()
+        self._selected_card: ProjectCard | None = None
 
         self._container = QWidget()
         self._layout = QVBoxLayout(self._container)
@@ -173,28 +218,104 @@ class ProjectPanel(QScrollArea):
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-    def update_project(self, project_name: str, new_state: str,
-                       timestamp: datetime):
-        """Update project state (unknown projects are auto-added)."""
-        if project_name not in self._cards:
-            card = ProjectCard(project_name)
-            self._cards[project_name] = card
-            # Insert before stretch
+        self._prepopulate()
+
+    def _prepopulate(self):
+        """起動時に GITLAB_PROJECTS の全エントリに対して ProjectCard を生成。"""
+        short_to_paths: dict[str, list[str]] = {}
+        for path in config.GITLAB_PROJECTS:
+            short = path.rsplit("/", 1)[-1]
+            short_to_paths.setdefault(short, []).append(path)
+
+        for short, paths in short_to_paths.items():
+            if len(paths) == 1:
+                self._name_to_path[short] = paths[0]
+
+        self._collided_names = {short for short, paths in short_to_paths.items() if len(paths) > 1}
+
+        for path in config.GITLAB_PROJECTS:
+            short = path.rsplit("/", 1)[-1]
+            display = path if short in self._collided_names else short
+            card = ProjectCard(display_name=display, project_path=path)
+            card.clicked.connect(self._on_card_clicked)
+            self._path_cards[path] = card
             self._layout.insertWidget(self._layout.count() - 1, card)
 
-        card = self._cards[project_name]
-        card.update_state(new_state, timestamp)
+        if self._collided_names:
+            import logging
+            logger = logging.getLogger(__name__)
+            for short in sorted(self._collided_names):
+                logger.warning("Display name collision for '%s' — using full paths", short)
 
-    def update_issues(self, project_name: str, issues: list[int]) -> None:
-        """Update Issue numbers for a project card."""
-        card = self._cards.get(project_name)
+    def _on_card_clicked(self, project_path: str):
+        self.project_clicked.emit(project_path)
+
+    def select_project(self, project_path: str | None):
+        """指定プロジェクトを選択表示。None で選択解除。"""
+        if self._selected_card is not None:
+            self._selected_card.set_selected(False)
+            self._selected_card = None
+        if project_path is not None:
+            card = self._path_cards.get(project_path)
+            if card is not None:
+                card.set_selected(True)
+                self._selected_card = card
+
+    def update_project(self, discord_name: str, new_state: str,
+                       timestamp: datetime):
+        """プロジェクト状態を更新。Discord名から名前解決を試みる。"""
+        project_path = self._name_to_path.get(discord_name)
+        if project_path is not None:
+            card = self._path_cards.get(project_path)
+            if card is not None:
+                card.update_state(new_state, timestamp)
+                return
+
+        if discord_name in self._collided_names:
+            import logging
+            logging.getLogger(__name__).debug(
+                "Ambiguous Discord name '%s' (collides with multiple projects) — skipped",
+                discord_name,
+            )
+            return
+
+        if discord_name not in self._dynamic_cards:
+            card = ProjectCard(display_name=discord_name, project_path=None)
+            card.clicked.connect(self._on_card_clicked)
+            self._dynamic_cards[discord_name] = card
+            self._layout.insertWidget(self._layout.count() - 1, card)
+
+        self._dynamic_cards[discord_name].update_state(new_state, timestamp)
+
+    def update_issues(self, discord_name: str, issues: list[int]) -> None:
+        """Issue 番号を更新。discord_name から名前解決し、該当カードを更新。"""
+        project_path = self._name_to_path.get(discord_name)
+        if project_path is not None:
+            card = self._path_cards.get(project_path)
+            if card is not None:
+                card.update_issues(issues)
+                return
+
+        if discord_name in self._collided_names:
+            return
+
+        card = self._dynamic_cards.get(discord_name)
         if card is not None:
             card.update_issues(issues)
 
-    def get_state(self, project_name: str) -> Optional[str]:
-        """Return the current state of the specified project."""
-        card = self._cards.get(project_name)
-        return card.state if card else None
+    def get_state(self, discord_name: str) -> Optional[str]:
+        """プロジェクトの現在の状態を返す。名前解決を経由して検索。"""
+        project_path = self._name_to_path.get(discord_name)
+        if project_path is not None:
+            card = self._path_cards.get(project_path)
+            if card is not None:
+                return card.state
+
+        if discord_name in self._collided_names:
+            return None
+
+        card = self._dynamic_cards.get(discord_name)
+        return card.state if card is not None else None
 
 
 class WatcherTrayIcon(QSystemTrayIcon):

@@ -126,3 +126,6 @@ STATE_COLORS: dict = {
 
 # Phase 2: System tray
 TRAY_TOOLTIP: str = "WatcherB - Discord Monitor"
+
+# GitLab Issue Browser: pagination
+MAX_PAGES: int = 20  # ページネーション上限（20 × 100 = 2000 items）

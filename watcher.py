@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 import config
 from discord_client import DiscordThread
+from issue_browser.gitlab_client import GitLabThread
 from message_parser import classify, extract_project, parse_message
 from widgets import ProjectPanel, SplashScreen, WatcherTrayIcon
 
@@ -145,6 +146,8 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_shortcuts()
         self._setup_tray()
+
+        self._gitlab_thread = GitLabThread(parent=self)
 
         if splash is not None:
             splash.set_progress(50, "Connecting to Discord...")
@@ -326,6 +329,8 @@ class MainWindow(QMainWindow):
         """On window close: minimize to tray or fully exit."""
         if self._force_quit:
             # Exit from tray menu "Exit"
+            self._gitlab_thread.shutdown()
+            self._gitlab_thread.wait(5000)
             if self._discord_thread.isRunning():
                 self._discord_thread.request_stop()
                 if not self._discord_thread.wait(5000):
