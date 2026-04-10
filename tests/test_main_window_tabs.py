@@ -84,3 +84,32 @@ class TestProjectSwitch:
         window._tab_bar.setCurrentIndex(0)
         window._on_project_clicked("group/projB")
         assert window._tab_bar.currentIndex() == 1
+
+
+class TestNullProjectCard:
+    def test_none_project_path_card_does_not_emit(self, window, qtbot):
+        """project_path=None card click → project_clicked not emitted."""
+        from PySide6.QtCore import QEvent, QPointF, Qt
+        from PySide6.QtGui import QMouseEvent
+
+        from widgets import ProjectCard
+
+        card = ProjectCard(display_name="dynamic", project_path=None)
+        qtbot.addWidget(card)
+
+        signals = []
+        card.clicked.connect(lambda p: signals.append(p))
+
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(5, 5),
+            QPointF(5, 5),
+            Qt.LeftButton,
+            Qt.LeftButton,
+            Qt.NoModifier,
+        )
+        card.mousePressEvent(event)
+
+        assert signals == []
+        assert window._selected_project is None
+        assert window._tab_bar.isHidden() is True
