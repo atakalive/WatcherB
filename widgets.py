@@ -174,7 +174,7 @@ class ProjectCard(QWidget):
         if self._state in ("IDLE", "DONE"):
             return
         base = config.GITLAB_BASE_URL.rstrip("/")
-        pj = self._display_name
+        pj = self._project_path if self._project_path is not None else self._display_name
         links = ", ".join(
             f'<a href="{base}/{pj}/-/issues/{n}" style="color: {config.COLORS["accent"]};">#{n}</a>'
             for n in issues

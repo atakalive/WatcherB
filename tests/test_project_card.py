@@ -103,6 +103,29 @@ class TestProjectCardSelection:
         assert "border-left" not in style
 
 
+class TestProjectCardUpdateIssues:
+    def test_issue_link_uses_project_path(self, qtbot):
+        """Issue URL should use project_path, not display_name."""
+        card = ProjectCard(display_name="foo", project_path="group/foo")
+        qtbot.addWidget(card)
+        ts = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+        card.update_state("IMPLEMENTATION", ts)
+        card.update_issues([42])
+        label_text = card._issue_label.text()
+        assert "group/foo/-/issues/42" in label_text
+        assert '"/foo/-/issues/42"' not in label_text
+
+    def test_issue_link_fallback_display_name(self, qtbot):
+        """Dynamic card (no project_path) should use display_name for URL."""
+        card = ProjectCard(display_name="dynproj", project_path=None)
+        qtbot.addWidget(card)
+        ts = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+        card.update_state("IMPLEMENTATION", ts)
+        card.update_issues([7])
+        label_text = card._issue_label.text()
+        assert "dynproj/-/issues/7" in label_text
+
+
 class TestProjectPanelPrepopulate:
     def test_prepopulate_creates_cards(self, qtbot, monkeypatch):
         monkeypatch.setattr(config, "GITLAB_PROJECTS", ["group/a", "group/b", "group/c"])
