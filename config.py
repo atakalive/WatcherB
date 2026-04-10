@@ -15,6 +15,18 @@ HISTORY_LIMIT: int = int(os.getenv("HISTORY_LIMIT", "20"))
 SEND_ENABLED: bool = os.getenv("SEND_ENABLED", "false").lower() in ("true", "1", "yes")
 GITLAB_BASE_URL: str = os.getenv("GITLAB_BASE_URL", "https://gitlab.com/gitlab-org")
 
+# GitLab Issue Browser
+GITLAB_URL: str = os.getenv("GITLAB_URL", "https://gitlab.com").rstrip("/")
+GITLAB_TOKEN: str = os.getenv("GITLAB_TOKEN", "")
+
+def _parse_gitlab_projects(raw: str) -> list[str]:
+    """Parse comma-separated GITLAB_PROJECTS string into list of project paths."""
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+_gitlab_projects_raw: str = os.getenv("GITLAB_PROJECTS", "")
+GITLAB_PROJECTS: list[str] = _parse_gitlab_projects(_gitlab_projects_raw)
+ISSUE_LIST_WIDTH: int = int(os.getenv("ISSUE_LIST_WIDTH", "280"))
+
 # Icon (my_icon.png overrides default if present)
 _project_root = Path(__file__).parent
 _custom_icon_candidates = [_project_root / "my_icon.png", _project_root / "my_icon.jpg"]
