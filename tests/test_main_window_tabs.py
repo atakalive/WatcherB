@@ -1,10 +1,13 @@
 """Tests for MainWindow QTabBar + QStackedWidget (Issue #16)."""
 
+import re
+
 import pytest
 
+import config
 from discord_client import DiscordThread
 from issue_browser.gitlab_client import GitLabThread
-from watcher import MainWindow
+from watcher import MainWindow, _build_global_qss
 
 
 @pytest.fixture
@@ -118,3 +121,13 @@ class TestNullProjectCard:
         assert relay_signals == []
         assert window._selected_project is None
         assert window._tab_bar.isHidden() is True
+
+
+class TestQSSRules:
+    def test_qlistwidget_selected_item_style(self):
+        qss = _build_global_qss()
+        match = re.search(r"QListWidget::item:selected\s*\{[^}]*\}", qss)
+        assert match is not None, "QListWidget::item:selected rule not found"
+        block = match.group(0)
+        assert f'background-color: {config.COLORS["accent"]};' in block
+        assert f'color: {config.COLORS["bg"]};' in block

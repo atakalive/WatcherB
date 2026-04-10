@@ -660,6 +660,10 @@ def _build_global_qss() -> str:
         QPushButton:hover {{
             background-color: {c["bg"]};
         }}
+        QListWidget::item:selected {{
+            background-color: {c["accent"]};
+            color: {c["bg"]};
+        }}
     """
 
 
