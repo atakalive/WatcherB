@@ -22,9 +22,9 @@ from issue_browser.markdown import md_to_html
 class IssueListWidget(QWidget):
     """Issue list display with filter and reload controls."""
 
-    issue_selected = Signal(int)        # iid
+    issue_selected = Signal(int)  # iid
     reload_requested = Signal()
-    filter_changed = Signal(str)        # API value ("opened" / "closed" / "all")
+    filter_changed = Signal(str)  # API value ("opened" / "closed" / "all")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -127,6 +127,31 @@ class IssueListWidget(QWidget):
         api_value = self._filter_combo.currentData()
         self.filter_changed.emit(api_value)
 
+    def reset_filter(self) -> None:
+        """フィルタ combo を "Open" (index 0) にリセット。signal は発火しない。"""
+        self._filter_combo.blockSignals(True)
+        try:
+            self._filter_combo.setCurrentIndex(0)
+        finally:
+            self._filter_combo.blockSignals(False)
+
+    def select_by_iid(self, iid: int) -> bool:
+        """指定 iid のアイテムを選択状態にする。見つからなければ False を返す。
+        選択成功時は issue_selected signal が発火する（blockSignals しない）。"""
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == iid:
+                self._list.setCurrentItem(item)
+                return True
+        return False
+
+    def selected_iid(self) -> int | None:
+        """現在選択中の issue iid を返す。未選択なら None。"""
+        current = self._list.currentItem()
+        if current is None:
+            return None
+        return current.data(Qt.ItemDataRole.UserRole)
+
     def current_filter(self) -> str:
         """現在のフィルタの API 値を返す。"""
         return self._filter_combo.currentData()
@@ -199,6 +224,4 @@ class IssueDetailWidget(QTextBrowser):
     def show_error(self, message: str) -> None:
         """エラー状態を表示。"""
         escaped = html.escape(message)
-        self.setHtml(
-            f'<p style="color: {config.COLORS["red"]};">Error: {escaped}</p>'
-        )
+        self.setHtml(f'<p style="color: {config.COLORS["red"]};">Error: {escaped}</p>')

@@ -59,10 +59,12 @@ def _linkify_issues(text: str, project: str) -> str:
     """
     base = config.GITLAB_BASE_URL.rstrip("/")
     safe_project = html.escape(project, quote=True)
+
     def _replace(m: re.Match) -> str:
         num = m.group(1)
         url = f"{base}/{safe_project}/-/issues/{num}"
         return f'<a href="{url}" style="color: {config.COLORS["accent"]};">#{num}</a>'
+
     return _ISSUE_REF_RE.sub(_replace, text)
 
 
@@ -72,7 +74,9 @@ def _highlight_states(text: str) -> str:
     accent = c["accent"]
     subtext = c["subtext"]
     text = _STATE_RE.sub(
-        lambda m: f'<span style="color: {accent}; font-weight: bold;">{m.group(1)}</span>',
+        lambda m: (
+            f'<span style="color: {accent}; font-weight: bold;">{m.group(1)}</span>'
+        ),
         text,
     )
     text = _ARROW_RE.sub(
@@ -80,6 +84,7 @@ def _highlight_states(text: str) -> str:
         text,
     )
     return text
+
 
 class MessageLog(QTextBrowser):
     """Message log display widget (color-coded + auto-scroll)."""
@@ -113,20 +118,22 @@ class MessageLog(QTextBrowser):
             esc = _markdown_to_html(esc)
             if i == 0:
                 rows += (
-                    f'<tr>'
+                    f"<tr>"
                     f'<td width="{config.TIMESTAMP_WIDTH}" valign="top"><font color="{subtext}" size="{config.FONT_SIZE_TIMESTAMP}">{time_str}</font></td>'
                     f'<td valign="top"><font color="{text_color}">{esc}</font></td>'
-                    f'</tr>'
+                    f"</tr>"
                 )
             else:
                 rows += (
-                    f'<tr>'
-                    f'<td></td>'
+                    f"<tr>"
+                    f"<td></td>"
                     f'<td><font color="{text_color}">{esc}</font></td>'
-                    f'</tr>'
+                    f"</tr>"
                 )
 
-        html_block = f'<table cellpadding="0" cellspacing="0" width="100%">{rows}</table>'
+        html_block = (
+            f'<table cellpadding="0" cellspacing="0" width="100%">{rows}</table>'
+        )
         self.append(html_block)
 
     def _on_scroll_value_changed(self, value: int):
@@ -152,6 +159,18 @@ class MainWindow(QMainWindow):
         self._setup_tray()
 
         self._gitlab_thread = GitLabThread(parent=self)
+        self._issue_cache: dict[tuple[str, str], tuple[list[dict], bool]] = {}
+        self._current_list_request_id: int = -1
+        self._current_detail_request_id: int = -1
+        self._current_state_filter: str = "opened"
+        self._reload_selected_iid: int | None = None  # reload 時の再選択用
+
+        # GitLabThread signals（start() の前に接続）
+        self._gitlab_thread.issues_loaded.connect(self._on_issues_loaded)
+        self._gitlab_thread.issue_detail_loaded.connect(self._on_issue_detail_loaded)
+        self._gitlab_thread.list_error.connect(self._on_list_error)
+        self._gitlab_thread.detail_error.connect(self._on_detail_error)
+        self._gitlab_thread.start()
 
         if splash is not None:
             splash.set_progress(50, "Connecting to Discord...")
@@ -191,11 +210,16 @@ class MainWindow(QMainWindow):
         self._right_stack.addWidget(self._message_log)  # index 0
 
         self._issue_list = IssueListWidget()
+        self._issue_list.reload_requested.connect(self._on_reload_requested)
+        self._issue_list.filter_changed.connect(self._on_filter_changed)
+        self._issue_list.issue_selected.connect(self._on_issue_selected)
         self._issue_detail = IssueDetailWidget()
         self._issue_splitter = QSplitter(Qt.Horizontal)
         self._issue_splitter.addWidget(self._issue_list)
         self._issue_splitter.addWidget(self._issue_detail)
-        detail_width = max(100, config.WINDOW_WIDTH - config.LEFT_PANEL_WIDTH - config.ISSUE_LIST_WIDTH)
+        detail_width = max(
+            100, config.WINDOW_WIDTH - config.LEFT_PANEL_WIDTH - config.ISSUE_LIST_WIDTH
+        )
         self._issue_splitter.setSizes([config.ISSUE_LIST_WIDTH, detail_width])
         self._right_stack.addWidget(self._issue_splitter)  # index 1
 
@@ -211,10 +235,12 @@ class MainWindow(QMainWindow):
 
         self._splitter.addWidget(self._project_panel)
         self._splitter.addWidget(right_container)
-        self._splitter.setSizes([
-            config.LEFT_PANEL_WIDTH,
-            config.WINDOW_WIDTH - config.LEFT_PANEL_WIDTH,
-        ])
+        self._splitter.setSizes(
+            [
+                config.LEFT_PANEL_WIDTH,
+                config.WINDOW_WIDTH - config.LEFT_PANEL_WIDTH,
+            ]
+        )
         layout.addWidget(self._splitter)
 
         self._status_label = QLabel("Disconnected")
@@ -249,9 +275,9 @@ class MainWindow(QMainWindow):
 
     def _apply_zoom(self):
         self._message_log.setStyleSheet(
-            f'font-family: {config.FONT_FAMILY};'
-            f'font-size: {config.FONT_SIZE}px;'
-            f'line-height: {config.LINE_HEIGHT};'
+            f"font-family: {config.FONT_FAMILY};"
+            f"font-size: {config.FONT_SIZE}px;"
+            f"line-height: {config.LINE_HEIGHT};"
         )
         self.statusBar().showMessage(f"Font size: {config.FONT_SIZE}px", 2000)
 
@@ -308,25 +334,20 @@ class MainWindow(QMainWindow):
             local_time = messages[-1]["created_at"].astimezone()
             self._last_msg_label.setText(f"Last msg: {local_time.strftime('%H:%M')}")
 
-    def _update_project_from_message(self, content: str, created_at,
-                                     msg_type: str):
+    def _update_project_from_message(self, content: str, created_at, msg_type: str):
         """Update project panel from state transition and info messages."""
         parsed = parse_message(content, created_at)
 
         # Issue 番号の更新（info メッセージ内の Target Issues）
         if parsed.project and parsed.extra.get("issues"):
-            self._project_panel.update_issues(
-                parsed.project, parsed.extra["issues"]
-            )
+            self._project_panel.update_issues(parsed.project, parsed.extra["issues"])
 
         # 状態遷移の更新（既存ロジック）
         if msg_type not in ("transition", "blocked", "done"):
             return
         if parsed.project and parsed.extra.get("to_state"):
             to_state = parsed.extra["to_state"]
-            self._project_panel.update_project(
-                parsed.project, to_state, created_at
-            )
+            self._project_panel.update_project(parsed.project, to_state, created_at)
             if to_state == "BLOCKED" and self._tray:
                 self._tray.showMessage(
                     parsed.project,
@@ -350,12 +371,34 @@ class MainWindow(QMainWindow):
             # 同じ PJ 再クリック → Normal Mode
             self._exit_issue_mode()
             return
+
         # Issue Mode 遷移（新規 or 異なる PJ）
         self._selected_project = project_path
+        self._current_state_filter = "opened"  # PJ 切替時はフィルタリセット
+        self._reload_selected_iid = None  # §7.5: PJ 切替は reload 再選択を無効化
+        self._issue_list.reset_filter()  # combo 表示も同期（signal 不発火）
         self._project_panel.select_project(project_path)
         self._right_stack.setCurrentIndex(1)
         self._tab_bar.setCurrentIndex(1)  # Issues tab 強制アクティブ
         self._tab_bar.show()
+
+        # §7.5: detail pane 無条件リセット
+        self._issue_detail.show_blank()
+        self._current_detail_request_id = -1
+
+        # §9.6/§9.7: cache チェック
+        cached = self._issue_cache.get((project_path, self._current_state_filter))
+        if cached is not None:
+            # cache hit → request_id 無効化 + 即座に表示
+            self._current_list_request_id = -1
+            issues, truncated = cached
+            self._issue_list.populate(issues, truncated=truncated)
+            return
+
+        # cache miss → Loading 表示 + fetch
+        self._issue_list.show_loading()
+        rid = self._gitlab_thread.fetch_issues(project_path, self._current_state_filter)
+        self._current_list_request_id = rid
 
     def _on_tab_changed(self, index: int):
         if self._selected_project is None:
@@ -367,8 +410,13 @@ class MainWindow(QMainWindow):
 
     def _exit_issue_mode(self):
         self._selected_project = None
+        self._current_list_request_id = -1
+        self._current_detail_request_id = -1
+        self._reload_selected_iid = (
+            None  # §7.5: Normal Mode 遷移は reload 再選択を無効化
+        )
         self._project_panel.select_project(None)
-        # §6.2: setCurrentIndex(0) を tab bar 非表示の **前** に呼ぶ
+        # §6.2: setCurrentIndex(0) を tab bar 非表示の前に呼ぶ
         self._right_stack.setCurrentIndex(0)
         self._tab_bar.hide()
 
@@ -385,6 +433,102 @@ class MainWindow(QMainWindow):
             return
         self._discord_thread.send_message(text)
         self._send_input.clear()
+
+    def _on_issues_loaded(
+        self, project: str, state: str, request_id: int, truncated: bool, issues: list
+    ):
+        # §9.7: stale response filtering（request_id ガード）
+        if request_id != self._current_list_request_id:
+            return
+        # §9.7 v6: 二次ガード — project/state が現在のコンテキストと一致するか
+        # ※ cache 更新の前に配置。不一致の response は cache にも格納しない
+        if project != self._selected_project or state != self._current_state_filter:
+            return
+        # cache 更新
+        self._issue_cache[(project, state)] = (issues, truncated)
+        # UI 更新
+        self._issue_list.populate(issues, truncated=truncated)
+
+        # reload 時の再選択（§7.5）
+        if self._reload_selected_iid is not None:
+            target_iid = self._reload_selected_iid
+            self._reload_selected_iid = None
+            # select_by_iid が True なら issue_selected signal 発火 → detail fetch 自動トリガー
+            self._issue_list.select_by_iid(target_iid)
+
+    def _on_issue_detail_loaded(
+        self, project: str, iid: int, request_id: int, detail: dict
+    ):
+        if request_id != self._current_detail_request_id:
+            return
+        self._issue_detail.show_detail(detail)
+
+    def _on_list_error(self, project: str, state: str, request_id: int, message: str):
+        if request_id != self._current_list_request_id:
+            return
+        if project != self._selected_project or state != self._current_state_filter:
+            return
+        self._issue_list.show_error(message)
+
+    def _on_detail_error(self, project: str, iid: int, request_id: int, message: str):
+        if request_id != self._current_detail_request_id:
+            return
+        self._issue_detail.show_error(message)
+
+    def _on_filter_changed(self, api_value: str):
+        if self._selected_project is None:
+            return
+        self._current_state_filter = api_value
+        self._reload_selected_iid = None  # §7.5: filter 変更は reload 再選択を無効化
+
+        # §7.5: detail pane リセット + selection クリア
+        self._issue_detail.show_blank()
+        self._current_detail_request_id = -1
+
+        # cache チェック
+        cached = self._issue_cache.get((self._selected_project, api_value))
+        if cached is not None:
+            self._current_list_request_id = -1
+            issues, truncated = cached
+            self._issue_list.populate(issues, truncated=truncated)
+            return
+
+        # cache miss → fetch
+        self._issue_list.show_loading()
+        rid = self._gitlab_thread.fetch_issues(self._selected_project, api_value)
+        self._current_list_request_id = rid
+
+    def _on_reload_requested(self):
+        if self._selected_project is None:
+            return
+
+        # §7.5: reload 時は再選択のため現在の iid を保存
+        self._reload_selected_iid = self._issue_list.selected_iid()
+
+        # §9.6: 当該 PJ の全フィルタ cache 無効化
+        keys_to_delete = [
+            k for k in self._issue_cache if k[0] == self._selected_project
+        ]
+        for k in keys_to_delete:
+            del self._issue_cache[k]
+
+        # §7.5: detail pane リセット
+        self._issue_detail.show_blank()
+        self._current_detail_request_id = -1
+
+        # Loading 表示 + fetch
+        self._issue_list.show_loading()
+        rid = self._gitlab_thread.fetch_issues(
+            self._selected_project, self._current_state_filter
+        )
+        self._current_list_request_id = rid
+
+    def _on_issue_selected(self, iid: int):
+        if self._selected_project is None:
+            return
+        self._issue_detail.show_loading()
+        rid = self._gitlab_thread.fetch_issue_detail(self._selected_project, iid)
+        self._current_detail_request_id = rid
 
     def closeEvent(self, event):
         """On window close: minimize to tray or fully exit."""
