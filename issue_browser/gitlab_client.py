@@ -116,7 +116,7 @@ class GitLabThread(QThread):
             try:
                 resp = self._session.get(next_url, params=current_params, timeout=_REQUEST_TIMEOUT)
                 resp.raise_for_status()
-            except requests.ConnectionError:
+            except requests.RequestException:
                 if self._shutdown:
                     raise _ShutdownInterrupt()
                 raise
