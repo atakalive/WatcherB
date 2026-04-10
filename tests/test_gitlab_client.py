@@ -197,10 +197,122 @@ class TestProcessDetailRequest:
         assert len(detail["_notes"]) == 2
         assert all(not n.get("system", False) for n in detail["_notes"])
 
+    def test_detail_contains_notes_and_truncated_flag(self, thread):
+        call_count = 0
+        def mock_get(url, params=None, timeout=None):
+            nonlocal call_count
+            call_count += 1
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.headers = {}
+            if call_count == 1:
+                resp.json.return_value = {"iid": 1, "title": "test"}
+            else:
+                resp.json.return_value = [
+                    {"id": 1, "body": "note1", "system": False},
+                ]
+            return resp
+
+        thread._session.get = mock_get
+        results = []
+        thread.issue_detail_loaded.connect(lambda *args: results.append(args))
+        thread._process_detail_request("group/proj", 1, 1)
+        assert len(results) == 1
+        detail = results[0][3]
+        assert detail["iid"] == 1
+        assert detail["title"] == "test"
+        assert "_notes" in detail
+        assert "_notes_truncated" in detail
+        assert detail["_notes_truncated"] is False
+
+    def test_notes_truncated_true(self, thread, monkeypatch):
+        monkeypatch.setattr(config, "MAX_PAGES", 1)
+        call_count = 0
+        def mock_get(url, params=None, timeout=None):
+            nonlocal call_count
+            call_count += 1
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            if call_count == 1:
+                resp.json.return_value = {"iid": 1, "title": "test"}
+                resp.headers = {}
+            else:
+                resp.json.return_value = [{"id": 1, "body": "note"}]
+                resp.headers = {"Link": '<http://next/page2>; rel="next"'}
+            return resp
+
+        thread._session.get = mock_get
+        results = []
+        thread.issue_detail_loaded.connect(lambda *args: results.append(args))
+        thread._process_detail_request("group/proj", 1, 1)
+        assert len(results) == 1
+        detail = results[0][3]
+        assert detail["_notes_truncated"] is True
+
+    def test_notes_truncated_false(self, thread):
+        call_count = 0
+        def mock_get(url, params=None, timeout=None):
+            nonlocal call_count
+            call_count += 1
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.headers = {}
+            if call_count == 1:
+                resp.json.return_value = {"iid": 1, "title": "test"}
+            else:
+                resp.json.return_value = [{"id": 1, "body": "note"}]
+            return resp
+
+        thread._session.get = mock_get
+        results = []
+        thread.issue_detail_loaded.connect(lambda *args: results.append(args))
+        thread._process_detail_request("group/proj", 1, 1)
+        assert len(results) == 1
+        detail = results[0][3]
+        assert detail["_notes_truncated"] is False
+
+    def test_detail_error_signal(self, thread):
+        def mock_get(url, params=None, timeout=None):
+            resp = MagicMock()
+            resp.raise_for_status.side_effect = requests.HTTPError("404 Not Found")
+            return resp
+
+        thread._session.get = mock_get
+        errors = []
+        thread.detail_error.connect(lambda *args: errors.append(args))
+        thread._process_detail_request("group/proj", 1, 42)
+        assert len(errors) == 1
+        project, iid, request_id, message = errors[0]
+        assert project == "group/proj"
+        assert iid == 1
+        assert request_id == 42
+        assert "404" in message
+
     def test_shutdown_before_request(self, thread):
         thread._shutdown = True
         with pytest.raises(_ShutdownInterrupt):
             thread._process_detail_request("group/proj", 1, 1)
+
+    def test_url_encoding_subgroup_detail(self, thread):
+        calls = []
+        def mock_get(url, params=None, timeout=None):
+            calls.append(url)
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.headers = {}
+            if len(calls) == 1:
+                resp.json.return_value = {"iid": 1, "title": "test"}
+            else:
+                resp.json.return_value = []
+            return resp
+
+        thread._session.get = mock_get
+        thread._process_detail_request("group/sub/proj", 1, 1)
+        assert len(calls) == 2
+        assert "group%2Fsub%2Fproj" in calls[0]
+        assert calls[0].endswith("/issues/1")
+        assert "group%2Fsub%2Fproj" in calls[1]
+        assert calls[1].endswith("/issues/1/notes")
 
 
 class TestProcessListRequest:
