@@ -172,7 +172,7 @@ class IssueDetailWidget(QTextBrowser):
         title = html.escape(detail_dict.get("title", ""))
         state = html.escape(detail_dict.get("state", "")).upper()
         labels = detail_dict.get("labels", [])
-        labels_str = ", ".join(html.escape(l) for l in labels)
+        labels_str = ", ".join(html.escape(label) for label in labels)
         body = detail_dict.get("description", "") or ""
         body_html = md_to_html(body)
         notes = detail_dict.get("_notes", [])
