@@ -216,7 +216,9 @@ class TestContextMenu:
 
         assert emissions == [42]
 
-    def test_context_menu_no_emit_for_non_issue(self, qtbot):
+    def test_context_menu_no_emit_for_non_issue(self, qtbot, monkeypatch):
+        import issue_browser.widgets as ibw
+
         w = IssueListWidget()
         qtbot.addWidget(w)
         w.show_loading()
@@ -224,10 +226,21 @@ class TestContextMenu:
         emissions = []
         w.open_in_browser.connect(lambda iid: emissions.append(iid))
 
+        menu_created = []
+        original_qmenu = ibw.QMenu
+
+        class _SpyMenu(original_qmenu):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                menu_created.append(True)
+
+        monkeypatch.setattr(ibw, "QMenu", _SpyMenu)
+
         pos = w._list.visualItemRect(w._list.item(0)).center()
         w._on_context_menu(pos)
 
         assert emissions == []
+        assert menu_created == [], "QMenu should not be created for non-issue items"
 
     def test_context_menu_no_emit_for_empty_area(self, qtbot):
         w = IssueListWidget()

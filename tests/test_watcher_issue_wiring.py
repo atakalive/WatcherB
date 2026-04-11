@@ -328,7 +328,7 @@ class TestReloadThenFilterChangeClearsReselect:
         window._issue_list.select_by_iid.assert_not_called()
 
 
-class TestOpenIssuInBrowser:
+class TestOpenIssueInBrowser:
     def test_open_issue_in_browser_url(self, window, monkeypatch):
         """_open_issue_in_browser builds correct URL and calls QDesktopServices.openUrl."""
         opened_urls = []
@@ -359,14 +359,18 @@ class TestOpenIssuInBrowser:
 
 
 class TestDoubleClickQadd:
-    def test_double_click_sets_qadd_text(self, window):
-        """_on_issue_double_clicked sets qadd text in send input."""
-        window._send_input = QLineEdit()
+    def test_double_click_sets_qadd_text(self, window, monkeypatch):
+        """_on_issue_double_clicked sets qadd text and calls setFocus."""
+        line_edit = QLineEdit()
+        focus_calls = []
+        monkeypatch.setattr(line_edit, "setFocus", lambda: focus_calls.append(True))
+        window._send_input = line_edit
         window._selected_project = "user/myrepo"
 
         window._on_issue_double_clicked(42)
 
         assert window._send_input.text() == "qadd myrepo 42 "
+        assert focus_calls == [True], "setFocus() should be called"
 
     def test_double_click_send_disabled(self, window):
         """_on_issue_double_clicked with _send_input=None does not crash."""
