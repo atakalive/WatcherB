@@ -241,6 +241,10 @@ class MainWindow(QMainWindow):
                 config.WINDOW_WIDTH - config.LEFT_PANEL_WIDTH,
             ]
         )
+        self._splitter.setStretchFactor(0, 0)   # 左パネル: 伸縮しない
+        self._splitter.setStretchFactor(1, 1)   # 右パネル: 伸縮する
+        self._splitter.setCollapsible(0, False)  # 左パネル: ドラッグで潰せない
+        self._project_panel.setFixedWidth(config.LEFT_PANEL_WIDTH)
         layout.addWidget(self._splitter)
 
         self._status_label = QLabel("Disconnected")
@@ -274,11 +278,7 @@ class MainWindow(QMainWindow):
         self._apply_zoom()
 
     def _apply_zoom(self):
-        self._message_log.setStyleSheet(
-            f"font-family: {config.FONT_FAMILY};"
-            f"font-size: {config.FONT_SIZE}px;"
-            f"line-height: {config.LINE_HEIGHT};"
-        )
+        QApplication.instance().setStyleSheet(_build_global_qss())
         self.statusBar().showMessage(f"Font size: {config.FONT_SIZE}px", 2000)
 
     def _setup_tray(self):
@@ -649,6 +649,12 @@ def _build_global_qss() -> str:
             border: 1px solid {c["subtext"]};
             border-radius: 4px;
             padding: 4px 8px;
+            font-family: {config.FONT_FAMILY};
+            font-size: {config.FONT_SIZE}px;
+        }}
+        QComboBox QAbstractItemView {{
+            font-family: {config.FONT_FAMILY};
+            font-size: {config.FONT_SIZE}px;
         }}
         QPushButton {{
             background-color: {c["surface"]};
@@ -656,9 +662,15 @@ def _build_global_qss() -> str:
             border: none;
             border-radius: 4px;
             padding: 6px 12px;
+            font-family: {config.FONT_FAMILY};
+            font-size: {config.FONT_SIZE}px;
         }}
         QPushButton:hover {{
             background-color: {c["bg"]};
+        }}
+        QListWidget {{
+            font-family: {config.FONT_FAMILY};
+            font-size: {config.FONT_SIZE}px;
         }}
         QListWidget::item:selected {{
             background-color: {c["accent"]};

@@ -123,6 +123,66 @@ class TestNullProjectCard:
         assert window._tab_bar.isHidden() is True
 
 
+class TestLeftPanelFixed:
+    def test_left_panel_fixed_width_after_resize(self, window, qtbot):
+        from PySide6.QtWidgets import QApplication
+
+        window.resize(config.WINDOW_WIDTH + 200, config.WINDOW_HEIGHT)
+        QApplication.processEvents()
+        assert window._project_panel.width() == config.LEFT_PANEL_WIDTH
+
+    def test_left_panel_min_max_width(self, window):
+        assert window._project_panel.minimumWidth() == config.LEFT_PANEL_WIDTH
+        assert window._project_panel.maximumWidth() == config.LEFT_PANEL_WIDTH
+
+    def test_left_panel_not_collapsible(self, window):
+        assert window._splitter.isCollapsible(0) is False
+
+
+class TestZoomQSS:
+    def test_build_global_qss_contains_font_for_all_widgets(self):
+        qss = _build_global_qss()
+        for selector in [
+            "QTextBrowser",
+            "QLineEdit",
+            "QListWidget",
+            "QComboBox",
+            "QPushButton",
+        ]:
+            pattern = re.compile(
+                rf"(?<!\S){re.escape(selector)}\s*\{{[^}}]*font-size[^}}]*\}}",
+                re.DOTALL,
+            )
+            assert pattern.search(qss), f"{selector} block missing font-size"
+        # QComboBox QAbstractItemView
+        pattern = re.compile(
+            r"QComboBox\s+QAbstractItemView\s*\{[^}]*font-size[^}]*\}",
+            re.DOTALL,
+        )
+        assert pattern.search(qss), "QComboBox QAbstractItemView block missing font-size"
+
+    def test_zoom_in_updates_global_qss(self, window, monkeypatch):
+        from PySide6.QtWidgets import QApplication
+
+        original = config.FONT_SIZE
+        monkeypatch.setattr(config, "FONT_SIZE", original)
+        window._zoom_in()
+        assert config.FONT_SIZE == original + 1
+        qss = QApplication.instance().styleSheet()
+        assert f"font-size: {config.FONT_SIZE}px" in qss
+        # restore
+        config.FONT_SIZE = original
+
+    def test_zoom_reset_restores_default(self, window, monkeypatch):
+        from PySide6.QtWidgets import QApplication
+
+        monkeypatch.setattr(config, "FONT_SIZE", 20)
+        window._zoom_reset()
+        assert config.FONT_SIZE == 13
+        qss = QApplication.instance().styleSheet()
+        assert "font-size: 13px" in qss
+
+
 class TestQSSRules:
     def test_qlistwidget_selected_item_style(self):
         qss = _build_global_qss()
