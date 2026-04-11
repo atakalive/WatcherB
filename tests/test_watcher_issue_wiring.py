@@ -4,6 +4,11 @@ from unittest.mock import create_autospec
 
 import pytest
 
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import QLineEdit
+
+import config
 from discord_client import DiscordThread
 from issue_browser.gitlab_client import GitLabThread
 from issue_browser.widgets import IssueDetailWidget, IssueListWidget
@@ -321,3 +326,67 @@ class TestReloadThenFilterChangeClearsReselect:
             "group/proj", "opened", reload_rid, False, [{"iid": 5}]
         )
         window._issue_list.select_by_iid.assert_not_called()
+
+
+class TestOpenIssuInBrowser:
+    def test_open_issue_in_browser_url(self, window, monkeypatch):
+        """_open_issue_in_browser builds correct URL and calls QDesktopServices.openUrl."""
+        opened_urls = []
+        monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened_urls.append(url))
+
+        window._selected_project = "user/repo"
+        window._open_issue_in_browser(42)
+
+        assert len(opened_urls) == 1
+        assert opened_urls[0] == QUrl(f"{config.GITLAB_URL}/user/repo/-/issues/42")
+
+    def test_open_issue_in_browser_wiring(self, qtbot, monkeypatch):
+        """Integration: open_in_browser signal → QDesktopServices.openUrl."""
+        monkeypatch.setattr(DiscordThread, "start", lambda self: None)
+        monkeypatch.setattr(GitLabThread, "start", lambda self: None)
+
+        opened_urls = []
+        monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened_urls.append(url))
+
+        w = MainWindow()
+        qtbot.addWidget(w)
+        w._selected_project = "group/proj"
+
+        w._issue_list.open_in_browser.emit(42)
+
+        assert len(opened_urls) == 1
+        assert opened_urls[0] == QUrl(f"{config.GITLAB_URL}/group/proj/-/issues/42")
+
+
+class TestDoubleClickQadd:
+    def test_double_click_sets_qadd_text(self, window):
+        """_on_issue_double_clicked sets qadd text in send input."""
+        window._send_input = QLineEdit()
+        window._selected_project = "user/myrepo"
+
+        window._on_issue_double_clicked(42)
+
+        assert window._send_input.text() == "qadd myrepo 42 "
+
+    def test_double_click_send_disabled(self, window):
+        """_on_issue_double_clicked with _send_input=None does not crash."""
+        window._send_input = None
+        window._selected_project = "user/repo"
+
+        window._on_issue_double_clicked(42)  # should not raise
+
+    def test_double_click_wiring(self, qtbot, monkeypatch):
+        """Integration: issue_double_clicked signal → _send_input gets qadd text."""
+        monkeypatch.setattr(DiscordThread, "start", lambda self: None)
+        monkeypatch.setattr(GitLabThread, "start", lambda self: None)
+        monkeypatch.setattr(config, "SEND_ENABLED", True)
+
+        w = MainWindow()
+        qtbot.addWidget(w)
+
+        assert w._send_input is not None
+        w._selected_project = "group/proj"
+
+        w._issue_list.issue_double_clicked.emit(10)
+
+        assert w._send_input.text() == "qadd proj 10 "

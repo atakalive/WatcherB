@@ -4,8 +4,8 @@ import html
 import re
 import sys
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -213,6 +213,8 @@ class MainWindow(QMainWindow):
         self._issue_list.reload_requested.connect(self._on_reload_requested)
         self._issue_list.filter_changed.connect(self._on_filter_changed)
         self._issue_list.issue_selected.connect(self._on_issue_selected)
+        self._issue_list.open_in_browser.connect(self._open_issue_in_browser)
+        self._issue_list.issue_double_clicked.connect(self._on_issue_double_clicked)
         self._issue_detail = IssueDetailWidget()
         self._issue_splitter = QSplitter(Qt.Horizontal)
         self._issue_splitter.addWidget(self._issue_list)
@@ -529,6 +531,23 @@ class MainWindow(QMainWindow):
         self._issue_detail.show_loading()
         rid = self._gitlab_thread.fetch_issue_detail(self._selected_project, iid)
         self._current_detail_request_id = rid
+
+    def _open_issue_in_browser(self, iid: int) -> None:
+        """Open the selected issue in the default web browser."""
+        if self._selected_project is None:
+            return
+        url = f"{config.GITLAB_URL}/{self._selected_project}/-/issues/{iid}"
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _on_issue_double_clicked(self, iid: int) -> None:
+        """Set qadd command text for the double-clicked issue."""
+        if self._send_input is None:
+            return
+        if self._selected_project is None:
+            return
+        short_name = self._selected_project.split("/")[-1]
+        self._send_input.setText(f"qadd {short_name} {iid} ")
+        self._send_input.setFocus()
 
     def closeEvent(self, event):
         """On window close: minimize to tray or fully exit."""

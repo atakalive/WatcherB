@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QTextBrowser,
     QVBoxLayout,
@@ -23,6 +24,8 @@ class IssueListWidget(QWidget):
     """Issue list display with filter and reload controls."""
 
     issue_selected = Signal(int)  # iid
+    open_in_browser = Signal(int)  # iid
+    issue_double_clicked = Signal(int)  # iid
     reload_requested = Signal()
     filter_changed = Signal(str)  # API value ("opened" / "closed" / "all")
 
@@ -52,6 +55,9 @@ class IssueListWidget(QWidget):
         self._filter_combo.currentIndexChanged.connect(self._on_filter_changed)
         self._reload_btn.clicked.connect(self.reload_requested.emit)
         self._list.currentItemChanged.connect(self._on_item_changed)
+        self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._list.customContextMenuRequested.connect(self._on_context_menu)
+        self._list.itemDoubleClicked.connect(self._on_item_double_clicked)
 
     def populate(self, issues: list[dict], truncated: bool = False):
         """Issue リストを表示。truncated=True なら末尾に警告アイテム追加。"""
@@ -121,6 +127,25 @@ class IssueListWidget(QWidget):
         iid = current.data(Qt.ItemDataRole.UserRole)
         if iid is not None:
             self.issue_selected.emit(iid)
+
+    def _on_context_menu(self, pos):
+        item = self._list.itemAt(pos)
+        if item is None:
+            return
+        iid = item.data(Qt.ItemDataRole.UserRole)
+        if iid is None:
+            return
+        menu = QMenu(self._list)
+        open_action = menu.addAction("Open in Browser")
+        action = menu.exec(self._list.mapToGlobal(pos))
+        if action == open_action:
+            self.open_in_browser.emit(iid)
+
+    def _on_item_double_clicked(self, item):
+        iid = item.data(Qt.ItemDataRole.UserRole)
+        if iid is None:
+            return
+        self.issue_double_clicked.emit(iid)
 
     def _on_filter_changed(self):
         """フィルタ変更時に API 値を emit。"""

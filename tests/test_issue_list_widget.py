@@ -1,7 +1,8 @@
 """Tests for IssueListWidget (Issue #20)."""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QMenu
 
 import config
 from issue_browser.widgets import IssueListWidget
@@ -173,3 +174,95 @@ class TestCurrentFilter:
         qtbot.addWidget(w)
         w._filter_combo.setCurrentIndex(2)
         assert w.current_filter() == "all"
+
+
+class _FakeAction:
+    pass
+
+
+class _FakeMenu:
+    def __init__(self, parent=None):
+        self._actions = []
+
+    def addAction(self, text):
+        action = _FakeAction()
+        self._actions.append(action)
+        return action
+
+    def exec(self, pos=None):
+        return self._actions[0] if self._actions else None
+
+
+class _FakeMenuNone(_FakeMenu):
+    def exec(self, pos=None):
+        return None
+
+
+class TestContextMenu:
+    def test_context_menu_emits_open_in_browser(self, qtbot, monkeypatch):
+        import issue_browser.widgets as ibw
+
+        w = IssueListWidget()
+        qtbot.addWidget(w)
+        w.populate([{"iid": 42, "title": "Test", "labels": []}])
+
+        emissions = []
+        w.open_in_browser.connect(lambda iid: emissions.append(iid))
+
+        monkeypatch.setattr(ibw, "QMenu", _FakeMenu)
+
+        pos = w._list.visualItemRect(w._list.item(0)).center()
+        w._on_context_menu(pos)
+
+        assert emissions == [42]
+
+    def test_context_menu_no_emit_for_non_issue(self, qtbot):
+        w = IssueListWidget()
+        qtbot.addWidget(w)
+        w.show_loading()
+
+        emissions = []
+        w.open_in_browser.connect(lambda iid: emissions.append(iid))
+
+        pos = w._list.visualItemRect(w._list.item(0)).center()
+        w._on_context_menu(pos)
+
+        assert emissions == []
+
+    def test_context_menu_no_emit_for_empty_area(self, qtbot):
+        w = IssueListWidget()
+        qtbot.addWidget(w)
+        w.populate([{"iid": 1, "title": "Test", "labels": []}])
+
+        emissions = []
+        w.open_in_browser.connect(lambda iid: emissions.append(iid))
+
+        w._on_context_menu(QPoint(0, 9999))
+
+        assert emissions == []
+
+
+class TestDoubleClick:
+    def test_double_click_emits_signal(self, qtbot):
+        w = IssueListWidget()
+        qtbot.addWidget(w)
+        w.populate([{"iid": 42, "title": "Test", "labels": []}])
+
+        emissions = []
+        w.issue_double_clicked.connect(lambda iid: emissions.append(iid))
+
+        w._list.itemDoubleClicked.emit(w._list.item(0))
+
+        assert emissions == [42]
+
+    def test_double_click_no_emit_for_non_issue(self, qtbot):
+        w = IssueListWidget()
+        qtbot.addWidget(w)
+        w.show_loading()
+
+        emissions = []
+        w.issue_double_clicked.connect(lambda iid: emissions.append(iid))
+
+        w._on_item_double_clicked(w._list.item(0))
+
+        assert emissions == []
