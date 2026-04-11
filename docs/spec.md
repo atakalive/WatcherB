@@ -13,6 +13,7 @@
 - [Theme](#theme)
 - [Pipeline States and Progress](#pipeline-states-and-progress)
 - [Discord Bot](#discord-bot)
+- [GitLab Issue Browser](#gitlab-issue-browser)
 - [Configuration](#configuration)
 - [File Structure](#file-structure)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
@@ -31,6 +32,7 @@ Receives messages from a Discord channel and visualizes per-project pipeline sta
 - **Python 3.10+**
 - **PySide6**: GUI framework
 - **discord.py**: Discord Gateway API (message receive/send)
+- **requests**: GitLab API v4 (synchronous HTTP)
 - **python-dotenv**: .env loading
 
 ## Installation
@@ -102,29 +104,30 @@ On first launch, use `run_debug.bat` (Windows) or run `python3 watcher.py` direc
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│  WatcherB (PySide6 QMainWindow)                 │
-│                                                  │
-│  ┌──────────────┐  ┌─────────────────────────┐  │
-│  │ Project      │  │ Message Log             │  │
-│  │ Status Panel │  │                         │  │
-│  │              │  │ 13:13 [gokrax] DESIGN   │  │
-│  │ gokrax       │  │       _REVIEW →         │  │
-│  │ ██████░░ REV │  │       DESIGN_REVISE     │  │
-│  │              │  │ 13:11 [gokrax] DESIGN   │  │
-│  │ TrajOpt      │  │       _PLAN →           │  │
-│  │ ████████ DONE│  │       DESIGN_REVIEW     │  │
-│  │              │  │ 13:09 [gokrax] Nudge:   │  │
-│  │ Issue: #12   │  │       kaneko             │  │
-│  └──────────────┘  └─────────────────────────┘  │
-│                                                  │
-│  [Status Bar: Connected | Last msg: 13:13]       │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  WatcherB (PySide6 QMainWindow)                      │
+│                                                       │
+│  ┌──────────────┐  ┌──────────────────────────────┐  │
+│  │ Project      │  │ QTabBar [Pipeline] [Issues]  │  │
+│  │ Status Panel │  │ (hidden in Normal mode)       │  │
+│  │              │  ├──────────────────────────────┤  │
+│  │ gokrax    ◀──click──  QStackedWidget           │  │
+│  │ ██████░░ REV │  │  idx 0: MessageLog           │  │
+│  │              │  │  idx 1: Issue Splitter        │  │
+│  │ TrajOpt      │  │    ┌────────────┬─────────┐  │  │
+│  │ ████████ DONE│  │    │ IssueList  │ IssueDtl│  │  │
+│  │              │  │    └────────────┴─────────┘  │  │
+│  └──────────────┘  └──────────────────────────────┘  │
+│                                                       │
+│  [Status Bar: Connected | Last msg: 13:13]            │
+└──────────────────────────────────────────────────────┘
 
-┌──────────────┐
-│ Discord Bot  │  ← Runs asynchronously in QThread
-│ (recv/send)  │
-└──────────────┘
+┌──────────────┐  ┌──────────────┐
+│ Discord Bot  │  │ GitLabThread │
+│ (recv/send)  │  │ (API client) │
+│ ← QThread    │  │ ← QThread    │
+│   asyncio    │  │   sync HTTP  │
+└──────────────┘  └──────────────┘
 ```
 
 ## UI Layout
@@ -141,14 +144,19 @@ A frameless window (360×200px) shown at startup.
 ### 2. Main Window
 
 - **Left Pane: Project Status Panel** (fixed width 200px)
-  - Card display per project (auto-generated on message receipt)
+  - Card display per project (pre-populated from `GITLAB_PROJECTS` + auto-generated on message receipt)
   - Current state (IDLE / INITIALIZE / DESIGN_PLAN / ... / DONE)
   - Pipeline progress bar (progress percentage based on state)
   - GitLab Issue link (opens in browser, based on `GITLAB_BASE_URL`)
   - Last update time
   - Issue link hidden in IDLE / DONE states
+  - Clicking a project card with a configured project path enters Issue Mode (see [GitLab Issue Browser](#gitlab-issue-browser))
 
-- **Right Pane: Message Log**
+- **Right Pane** (two modes via QStackedWidget)
+  - **Normal Mode** (default): MessageLog only, tab bar hidden
+  - **Issue Mode**: Tab bar with [Pipeline] [Issues] tabs; Issues tab shows IssueListWidget + IssueDetailWidget side-by-side
+
+- **Right Pane: Message Log** (Normal Mode / Pipeline tab)
   - Real-time display of messages from the monitored channel
   - Loads `HISTORY_LIMIT` past messages on startup
   - Timestamp + message content
@@ -329,6 +337,47 @@ BLOCKED             →  Stops at current value (displayed in red)
 - Relies on discord.py's automatic reconnection
 - Status bar updates on connection state changes
 
+## GitLab Issue Browser
+
+An integrated panel for browsing GitLab issues without leaving WatcherB. For full implementation details, see [plan/gitlab-issue-browser-spec-rev6.md](../plan/gitlab-issue-browser-spec-rev6.md).
+
+### UI Modes
+
+- **Normal Mode** (default): Pipeline view only. Tab bar is hidden, right panel shows MessageLog
+- **Issue Mode**: Activated by clicking a project card in the left panel (requires `project_path` via `GITLAB_PROJECTS`). Tab bar appears with **[Pipeline]** and **[Issues]** tabs. Issues tab is initially active
+- Click the same project card again or press **Escape** to return to Normal Mode
+
+### Issue List
+
+- Displays issues for the selected project, fetched from GitLab API v4
+- Filter by state: Open (default) / Closed / All via dropdown
+- Reload button to re-fetch from API
+- Pagination support up to `MAX_PAGES` × 100 items (default: 2000); truncation warning shown when limit is reached
+- Results are cached per `(project, state_filter)` to avoid redundant API calls
+
+### Issue Detail
+
+- Shows issue title, description, and comments (non-system notes only)
+- Markdown rendering: bold, code blocks (fenced and inline), links, and lists converted to HTML for QTextBrowser
+- Truncation warning displayed when comment count exceeds the pagination limit
+
+### GitLabThread
+
+- Runs in a QThread using synchronous `requests` library with `QWaitCondition` for request queuing (not asyncio)
+- Signals: `issues_loaded`, `issue_detail_loaded`, `list_error`, `detail_error`
+- Request ID-based stale response filtering prevents outdated API results from overwriting the UI
+- Session-based HTTP connection pooling; shutdown via `Session.close()`
+
+### Module Structure
+
+All issue browsing code is in the `issue_browser/` package:
+
+| File | Description |
+|------|-------------|
+| `gitlab_client.py` | GitLabThread — QThread-based API client |
+| `widgets.py` | IssueListWidget (list + filter) and IssueDetailWidget (detail view) |
+| `markdown.py` | Minimal Markdown-to-HTML converter for QTextBrowser |
+
 ## Configuration
 
 ### .env (Secrets / Environment-Specific)
@@ -342,6 +391,14 @@ SEND_ENABLED=true        # Command sending (true/false)
 GITLAB_BASE_URL=https://gitlab.com/YOUR_NAMESPACE  # Base URL for GitLab Issue links
 ```
 
+GitLab Issue Browser:
+
+```
+GITLAB_URL=https://gitlab.com              # GitLab instance URL (default: https://gitlab.com)
+GITLAB_TOKEN=glpat-xxx                     # Personal access token (read_api scope; required for private repos)
+GITLAB_PROJECTS=ns/proj1,ns/proj2          # Comma-separated full project paths
+```
+
 Optional (defaults provided):
 
 ```
@@ -351,6 +408,7 @@ WINDOW_HEIGHT=800        # Window height (px)
 FONT_SIZE=20             # Message log font size (px)
 FONT_FAMILY=Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace
 LINE_HEIGHT=2.3          # Message log line height
+ISSUE_LIST_WIDTH=280     # Issue list pane width (px)
 ```
 
 ### config.py (Application Settings)
@@ -368,25 +426,32 @@ Custom icons are supported. Searched in the following priority order:
 
 ```
 WatcherB/
-├── watcher.py          # Entry point + QMainWindow + MessageLog
-├── discord_client.py   # Discord bot (QThread)
-├── message_parser.py   # Message parsing and classification
-├── widgets.py          # Custom widgets (ProjectCard, ProjectPanel, WatcherTrayIcon, SplashScreen)
-├── config.py           # Configuration (.env secrets + UI settings)
+├── watcher.py              # Entry point + QMainWindow + MessageLog
+├── discord_client.py       # Discord bot (QThread)
+├── message_parser.py       # Message parsing and classification
+├── widgets.py              # Custom widgets (ProjectCard, ProjectPanel, WatcherTrayIcon, SplashScreen)
+├── config.py               # Configuration (.env secrets + UI settings)
+├── issue_browser/          # GitLab Issue Browser
+│   ├── __init__.py
+│   ├── gitlab_client.py    # GitLabThread — QThread-based API client
+│   ├── widgets.py          # IssueListWidget, IssueDetailWidget
+│   └── markdown.py         # Markdown-to-HTML converter
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
 ├── .gitattributes
-├── icon.png            # Default icon
-├── run.bat             # Windows launch (no console)
-├── run_debug.bat       # Windows launch (with console)
+├── icon.png                # Default icon
+├── run.bat                 # Windows launch (no console)
+├── run_debug.bat           # Windows launch (with console)
 ├── LICENSE
 ├── README.md
 ├── README_ja.md
-├── CLAUDE.md           # Development guide
-└── docs/
-    ├── spec.md         # This specification (English)
-    └── spec_ja.md      # Specification (Japanese)
+├── CLAUDE.md               # Development guide
+├── docs/
+│   ├── spec.md             # This specification (English)
+│   └── spec_ja.md          # Specification (Japanese)
+└── plan/
+    └── gitlab-issue-browser-spec-rev6.md  # Issue Browser design spec
 ```
 
 ## Keyboard Shortcuts
@@ -396,9 +461,13 @@ WatcherB/
 | Ctrl + = / Ctrl + + | Increase font size (max 30px) |
 | Ctrl + - | Decrease font size (min 8px) |
 | Ctrl + 0 | Reset font size (13px) |
+| Escape | Exit Issue mode (return to Normal mode) |
 
 ## Limitations
 
 - **One instance monitors one channel**
 - **QTextBrowser CSS support is limited**: Uses `<table>`-based layout and `<font color>` for coloring. Inline styles like `border-left`, `padding-left` do not work
 - **Timestamps are displayed in local timezone**
+- **GitLab Issue Browser is read-only** — no issue creation, editing, or commenting
+- **Issue data is fetched on demand** — no real-time updates via webhooks or polling
+- **Maximum 2000 issues per project per fetch** (`MAX_PAGES` × 100 items per page)

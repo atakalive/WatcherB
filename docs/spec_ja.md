@@ -13,6 +13,7 @@
 - [テーマ](#テーマ)
 - [パイプライン状態と進捗率](#パイプライン状態と進捗率)
 - [Discord Bot](#discord-bot)
+- [GitLab Issue ブラウザ](#gitlab-issue-ブラウザ)
 - [設定](#設定)
 - [ファイル構成](#ファイル構成)
 - [キーボードショートカット](#キーボードショートカット)
@@ -31,6 +32,7 @@ Discord チャンネルのメッセージを受信し、プロジェクトごと
 - **Python 3.10+**
 - **PySide6**: GUI フレームワーク
 - **discord.py**: Discord Gateway API（メッセージ受信・送信）
+- **requests**: GitLab API v4（同期HTTP）
 - **python-dotenv**: .env 読み込み
 
 ## インストール
@@ -102,29 +104,30 @@ python3 watcher.py
 ## アーキテクチャ
 
 ```
-┌─────────────────────────────────────────────────┐
-│  WatcherB (PySide6 QMainWindow)                 │
-│                                                  │
-│  ┌──────────────┐  ┌─────────────────────────┐  │
-│  │ Project      │  │ Message Log             │  │
-│  │ Status Panel │  │                         │  │
-│  │              │  │ 13:13 [gokrax] DESIGN   │  │
-│  │ gokrax       │  │       _REVIEW →         │  │
-│  │ ██████░░ REV │  │       DESIGN_REVISE     │  │
-│  │              │  │ 13:11 [gokrax] DESIGN   │  │
-│  │ TrajOpt      │  │       _PLAN →           │  │
-│  │ ████████ DONE│  │       DESIGN_REVIEW     │  │
-│  │              │  │ 13:09 [gokrax] 催促:    │  │
-│  │ Issue: #12   │  │       kaneko             │  │
-│  └──────────────┘  └─────────────────────────┘  │
-│                                                  │
-│  [Status Bar: Connected | Last msg: 13:13]       │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  WatcherB (PySide6 QMainWindow)                      │
+│                                                       │
+│  ┌──────────────┐  ┌──────────────────────────────┐  │
+│  │ Project      │  │ QTabBar [Pipeline] [Issues]  │  │
+│  │ Status Panel │  │ (Normal Mode では非表示)       │  │
+│  │              │  ├──────────────────────────────┤  │
+│  │ gokrax    ◀──click──  QStackedWidget           │  │
+│  │ ██████░░ REV │  │  idx 0: MessageLog           │  │
+│  │              │  │  idx 1: Issue Splitter        │  │
+│  │ TrajOpt      │  │    ┌────────────┬─────────┐  │  │
+│  │ ████████ DONE│  │    │ IssueList  │ IssueDtl│  │  │
+│  │              │  │    └────────────┴─────────┘  │  │
+│  └──────────────┘  └──────────────────────────────┘  │
+│                                                       │
+│  [Status Bar: Connected | Last msg: 13:13]            │
+└──────────────────────────────────────────────────────┘
 
-┌──────────────┐
-│ Discord Bot  │  ← QThread で非同期実行
-│ (受信/送信)   │
-└──────────────┘
+┌──────────────┐  ┌──────────────┐
+│ Discord Bot  │  │ GitLabThread │
+│ (受信/送信)   │  │ (APIクライアント) │
+│ ← QThread    │  │ ← QThread    │
+│   asyncio    │  │   同期HTTP    │
+└──────────────┘  └──────────────┘
 ```
 
 ## 画面構成
@@ -141,14 +144,19 @@ python3 watcher.py
 ### 2. メインウィンドウ
 
 - **左ペイン: プロジェクトステータスパネル**（幅200px固定）
-  - プロジェクトごとにカード表示（メッセージ受信時に自動生成）
+  - プロジェクトごとにカード表示（`GITLAB_PROJECTS` から事前生成 + メッセージ受信時に自動生成）
   - 現在の状態（IDLE / INITIALIZE / DESIGN_PLAN / ... / DONE）
   - パイプライン進捗バー（状態に応じた進捗率）
   - GitLab Issue リンク（クリックでブラウザ表示、`GITLAB_BASE_URL` ベース）
   - 最終更新時刻
   - IDLE / DONE 状態ではIssueリンクを非表示
+  - プロジェクトカードをクリックすると Issue モードに遷移（[GitLab Issue ブラウザ](#gitlab-issue-ブラウザ) 参照）
 
-- **右ペイン: メッセージログ**
+- **右ペイン**（QStackedWidget による2モード切替）
+  - **Normal Mode**（デフォルト）: MessageLog のみ、タブバー非表示
+  - **Issue Mode**: タブバー [Pipeline] [Issues] 表示。Issues タブでは IssueListWidget + IssueDetailWidget を左右分割表示
+
+- **右ペイン: メッセージログ**（Normal Mode / Pipeline タブ）
   - 監視チャンネルのメッセージをリアルタイム表示
   - 起動時に過去メッセージを `HISTORY_LIMIT` 件ロード
   - タイムスタンプ + メッセージ内容
@@ -329,6 +337,47 @@ BLOCKED             →  現在値で停止（赤表示）
 - discord.py の自動再接続に任せる
 - 接続状態変化時にステータスバーを更新
 
+## GitLab Issue ブラウザ
+
+WatcherB 内で GitLab Issue を閲覧するための統合パネル。詳細な実装仕様は [plan/gitlab-issue-browser-spec-rev6.md](../plan/gitlab-issue-browser-spec-rev6.md) を参照。
+
+### UI モード
+
+- **Normal Mode**（デフォルト）: パイプライン表示のみ。タブバー非表示、右パネルは MessageLog
+- **Issue Mode**: 左パネルのプロジェクトカードをクリックで有効化（`GITLAB_PROJECTS` による `project_path` が必要）。タブバーに **[Pipeline]** と **[Issues]** が表示され、Issues タブが初期アクティブ
+- 同じプロジェクトカードを再クリックまたは **Escape** キーで Normal Mode に戻る
+
+### Issue リスト
+
+- 選択プロジェクトの Issue を GitLab API v4 から取得・表示
+- 状態フィルタ: Open（デフォルト）/ Closed / All（ドロップダウン）
+- Reload ボタンで API から再取得
+- ページネーション対応、最大 `MAX_PAGES` × 100 件（デフォルト: 2000件）。上限到達時に切り捨て警告を表示
+- 結果は `(project, state_filter)` をキーにキャッシュし、冗長な API 呼び出しを回避
+
+### Issue 詳細
+
+- Issue タイトル、説明文、コメント（システムノート除外）を表示
+- Markdown レンダリング: 太字、コードブロック（フェンスド・インライン）、リンク、リストを QTextBrowser 用 HTML に変換
+- コメント数がページネーション上限を超えた場合に切り捨て警告を表示
+
+### GitLabThread
+
+- QThread 内で同期 `requests` ライブラリ + `QWaitCondition` によるリクエストキューイングで実行（asyncio ではない）
+- Signal: `issues_loaded`, `issue_detail_loaded`, `list_error`, `detail_error`
+- リクエストID ベースの stale レスポンスフィルタリングにより、古い API 結果による UI 上書きを防止
+- セッションベースの HTTP コネクションプーリング。シャットダウンは `Session.close()` で実行
+
+### モジュール構成
+
+Issue ブラウザのコードは `issue_browser/` パッケージに配置:
+
+| ファイル | 説明 |
+|---------|------|
+| `gitlab_client.py` | GitLabThread — QThread ベースの API クライアント |
+| `widgets.py` | IssueListWidget（リスト + フィルタ）と IssueDetailWidget（詳細表示） |
+| `markdown.py` | QTextBrowser 用の最小限 Markdown→HTML コンバータ |
+
 ## 設定
 
 ### .env（秘匿・環境固有）
@@ -342,6 +391,14 @@ SEND_ENABLED=true        # コマンド送信機能 (true/false)
 GITLAB_BASE_URL=https://gitlab.com/YOUR_NAMESPACE  # GitLab Issue リンクのベースURL
 ```
 
+GitLab Issue Browser:
+
+```
+GITLAB_URL=https://gitlab.com              # GitLab インスタンスURL（デフォルト: https://gitlab.com）
+GITLAB_TOKEN=glpat-xxx                     # パーソナルアクセストークン（read_api スコープ。プライベートリポに必要）
+GITLAB_PROJECTS=ns/proj1,ns/proj2          # カンマ区切りのフルプロジェクトパス
+```
+
 オプション（デフォルト値あり）:
 
 ```
@@ -351,6 +408,7 @@ WINDOW_HEIGHT=800        # ウィンドウ高さ (px)
 FONT_SIZE=20             # メッセージログのフォントサイズ (px)
 FONT_FAMILY=Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace
 LINE_HEIGHT=2.3          # メッセージログの行高
+ISSUE_LIST_WIDTH=280     # Issue リストペインの幅 (px)
 ```
 
 ### config.py（アプリケーション設定）
@@ -368,25 +426,32 @@ LINE_HEIGHT=2.3          # メッセージログの行高
 
 ```
 WatcherB/
-├── watcher.py          # エントリポイント + QMainWindow + MessageLog
-├── discord_client.py   # Discord bot (QThread)
-├── message_parser.py   # メッセージ解析・分類
-├── widgets.py          # カスタムウィジェット（ProjectCard, ProjectPanel, WatcherTrayIcon, SplashScreen）
-├── config.py           # 設定（.envから秘匿値読み込み + UI設定）
+├── watcher.py              # エントリポイント + QMainWindow + MessageLog
+├── discord_client.py       # Discord bot (QThread)
+├── message_parser.py       # メッセージ解析・分類
+├── widgets.py              # カスタムウィジェット（ProjectCard, ProjectPanel, WatcherTrayIcon, SplashScreen）
+├── config.py               # 設定（.envから秘匿値読み込み + UI設定）
+├── issue_browser/          # GitLab Issue ブラウザ
+│   ├── __init__.py
+│   ├── gitlab_client.py    # GitLabThread — QThread ベース API クライアント
+│   ├── widgets.py          # IssueListWidget, IssueDetailWidget
+│   └── markdown.py         # Markdown→HTML コンバータ
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
 ├── .gitattributes
-├── icon.png            # デフォルトアイコン
-├── run.bat             # Windows起動（コンソールなし）
-├── run_debug.bat       # Windows起動（コンソール付き）
+├── icon.png                # デフォルトアイコン
+├── run.bat                 # Windows起動（コンソールなし）
+├── run_debug.bat           # Windows起動（コンソール付き）
 ├── LICENSE
 ├── README.md
 ├── README_ja.md
-├── CLAUDE.md           # 開発ガイド
-└── docs/
-    ├── spec.md         # Specification (English)
-    └── spec_ja.md      # 本仕様書（日本語）
+├── CLAUDE.md               # 開発ガイド
+├── docs/
+│   ├── spec.md             # Specification (English)
+│   └── spec_ja.md          # 本仕様書（日本語）
+└── plan/
+    └── gitlab-issue-browser-spec-rev6.md  # Issue Browser 設計仕様書
 ```
 
 ## キーボードショートカット
@@ -396,9 +461,13 @@ WatcherB/
 | Ctrl + = / Ctrl + + | フォント拡大（最大30px） |
 | Ctrl + - | フォント縮小（最小8px） |
 | Ctrl + 0 | フォントサイズリセット（13px） |
+| Escape | Issue モード終了（Normal Mode に戻る） |
 
 ## 制約
 
 - **1インスタンスで1チャンネル監視**
 - **QTextBrowser の CSS サポートが限定的**: `<table>` ベースレイアウト、`<font color>` で色指定。inline style の `border-left`, `padding-left` 等は効かない
 - **タイムスタンプはローカルタイムゾーンに変換して表示**
+- **GitLab Issue ブラウザは読み取り専用** — Issue の作成・編集・コメント投稿は不可
+- **Issue データはオンデマンド取得** — webhook やポーリングによるリアルタイム更新なし
+- **1プロジェクトあたり最大2000件の Issue を取得**（`MAX_PAGES` × 100件/ページ）
