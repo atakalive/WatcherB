@@ -88,6 +88,73 @@ FONT_SIZE_TIMESTAMP: int = 3  # Timestamp font size (px)
 FONT_SIZE_STATUS: int = 20   # Status bar font size (px)
 LINE_HEIGHT: float = float(os.getenv("LINE_HEIGHT", "2.3"))
 
+# reload() で管理するキー一覧（.env から削除された場合にデフォルトに戻すため）
+_MANAGED_ENV_KEYS: list[str] = [
+    "DISCORD_BOT_TOKEN", "CHANNEL_ID", "HISTORY_LIMIT", "SEND_ENABLED",
+    "GITLAB_BASE_URL", "GITLAB_URL", "GITLAB_TOKEN", "GITLAB_PROJECTS",
+    "ISSUE_LIST_WIDTH", "WINDOW_WIDTH", "WINDOW_HEIGHT",
+    "FONT_FAMILY", "FONT_SIZE", "LINE_HEIGHT",
+]
+
+
+def reload(dotenv_path: Path | None = None) -> None:
+    """Re-read .env and update module-level settings.
+
+    Args:
+        dotenv_path: .env ファイルのパス。None の場合は load_dotenv() のデフォルト探索。
+
+    Raises:
+        ValueError: .env の値が不正な場合（型変換失敗等）。
+            この場合、モジュール変数は変更されない（半更新状態にならない）。
+    """
+    global DISCORD_BOT_TOKEN, CHANNEL_ID, HISTORY_LIMIT, SEND_ENABLED
+    global GITLAB_BASE_URL, GITLAB_URL, GITLAB_TOKEN, GITLAB_PROJECTS
+    global ISSUE_LIST_WIDTH, ICON_PATH
+    global WINDOW_WIDTH, WINDOW_HEIGHT
+    global FONT_FAMILY, FONT_SIZE, LINE_HEIGHT
+
+    # .env から削除されたキーをデフォルトに戻すため、先にクリア
+    for key in _MANAGED_ENV_KEYS:
+        os.environ.pop(key, None)
+
+    load_dotenv(dotenv_path=dotenv_path, override=True)
+
+    # 一時変数に読み込み（型変換失敗時は ValueError で中断、モジュール変数は無変更）
+    new_token: str = os.getenv("DISCORD_BOT_TOKEN", "")
+    new_channel_id: int = int(os.getenv("CHANNEL_ID", "0"))
+    new_history_limit: int = int(os.getenv("HISTORY_LIMIT", "20"))
+    new_send_enabled: bool = os.getenv("SEND_ENABLED", "false").lower() in ("true", "1", "yes")
+    new_gitlab_base_url: str = os.getenv("GITLAB_BASE_URL", "https://gitlab.com/gitlab-org")
+    new_gitlab_url: str = os.getenv("GITLAB_URL", "https://gitlab.com").rstrip("/")
+    new_gitlab_token: str = os.getenv("GITLAB_TOKEN", "")
+    new_gitlab_projects: list[str] = _parse_gitlab_projects(os.getenv("GITLAB_PROJECTS", ""))
+    new_issue_list_width: int = int(os.getenv("ISSUE_LIST_WIDTH", "280"))
+    new_window_width: int = int(os.getenv("WINDOW_WIDTH", "1000"))
+    new_window_height: int = int(os.getenv("WINDOW_HEIGHT", "800"))
+    new_font_family: str = os.getenv("FONT_FAMILY", "Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace")
+    new_font_size: int = int(os.getenv("FONT_SIZE", "20"))
+    new_line_height: float = float(os.getenv("LINE_HEIGHT", "2.3"))
+
+    _custom_icon: Path | None = next((p for p in _custom_icon_candidates if p.exists()), None)
+    new_icon_path: Path = _custom_icon if _custom_icon else _project_root / "icon.png"
+
+    # 全値の型変換が成功した場合のみ、一括代入
+    DISCORD_BOT_TOKEN = new_token
+    CHANNEL_ID = new_channel_id
+    HISTORY_LIMIT = new_history_limit
+    SEND_ENABLED = new_send_enabled
+    GITLAB_BASE_URL = new_gitlab_base_url
+    GITLAB_URL = new_gitlab_url
+    GITLAB_TOKEN = new_gitlab_token
+    GITLAB_PROJECTS = new_gitlab_projects
+    ISSUE_LIST_WIDTH = new_issue_list_width
+    ICON_PATH = new_icon_path
+    WINDOW_WIDTH = new_window_width
+    WINDOW_HEIGHT = new_window_height
+    FONT_FAMILY = new_font_family
+    FONT_SIZE = new_font_size
+    LINE_HEIGHT = new_line_height
+
 # Message log
 TIMESTAMP_WIDTH: int = 65         # Timestamp column width (px)
 

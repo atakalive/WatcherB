@@ -283,12 +283,23 @@ class MainWindow(QMainWindow):
         QApplication.instance().setStyleSheet(_build_global_qss())
         self.statusBar().showMessage(f"Font size: {config.FONT_SIZE}px", 2000)
 
+    def _reload_config(self) -> None:
+        """Reload .env settings and apply to running application."""
+        try:
+            config.reload()
+        except (ValueError, OSError) as exc:
+            self.statusBar().showMessage(f"Reload failed: {exc}", 5000)
+            return
+        QApplication.instance().setStyleSheet(_build_global_qss())
+        self.statusBar().showMessage("Configuration reloaded", 3000)
+
     def _setup_tray(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
             self._tray = None
             return
         self._tray = WatcherTrayIcon(self)
         self._tray.show_requested.connect(self._toggle_window)
+        self._tray.reload_requested.connect(self._reload_config)
         self._tray.exit_requested.connect(self._exit_app)
         self._tray.show()
 
