@@ -14,16 +14,21 @@ class TestConfigReload:
 
     @pytest.fixture(autouse=True)
     def _save_restore_config(self):
-        """Save and restore config module variables modified by reload()."""
-        saved = {attr: getattr(config, attr) for attr in [
+        """Save and restore config module variables and os.environ."""
+        saved_config = {attr: getattr(config, attr) for attr in [
             "DISCORD_BOT_TOKEN", "CHANNEL_ID", "HISTORY_LIMIT", "SEND_ENABLED",
             "GITLAB_BASE_URL", "GITLAB_URL", "GITLAB_TOKEN", "GITLAB_PROJECTS",
             "ISSUE_LIST_WIDTH", "ICON_PATH", "WINDOW_WIDTH", "WINDOW_HEIGHT",
             "FONT_FAMILY", "FONT_SIZE", "LINE_HEIGHT",
         ]}
+        saved_env = os.environ.copy()
+        saved_dotenv_keys = config._last_dotenv_keys.copy()
         yield
-        for attr, val in saved.items():
+        for attr, val in saved_config.items():
             setattr(config, attr, val)
+        os.environ.clear()
+        os.environ.update(saved_env)
+        config._last_dotenv_keys = saved_dotenv_keys
 
     def test_reload_updates_font_size(self, tmp_path):
         """FONT_SIZE が .env の変更で更新されること."""
@@ -42,6 +47,15 @@ class TestConfigReload:
         env_file.write_text("")
         config.reload(dotenv_path=env_file)
         assert config.FONT_SIZE == 20  # デフォルト値
+
+    def test_reload_preserves_shell_env_vars(self, tmp_path):
+        """シェル環境変数由来の設定が reload で破壊されないこと."""
+        os.environ["FONT_SIZE"] = "24"
+        env_file = tmp_path / ".env"
+        env_file.write_text("")  # .env に FONT_SIZE なし
+        config._last_dotenv_keys = set()  # 前回も .env にない
+        config.reload(dotenv_path=env_file)
+        assert config.FONT_SIZE == 24  # シェル環境変数の値が保持される
 
     def test_reload_invalid_value_no_partial_update(self, tmp_path):
         """不正値で ValueError が発生した場合、モジュール変数が変更されないこと.

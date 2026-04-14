@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 load_dotenv()
 
@@ -88,17 +88,22 @@ FONT_SIZE_TIMESTAMP: int = 3  # Timestamp font size (px)
 FONT_SIZE_STATUS: int = 20   # Status bar font size (px)
 LINE_HEIGHT: float = float(os.getenv("LINE_HEIGHT", "2.3"))
 
-# reload() で管理するキー一覧（.env から削除された場合にデフォルトに戻すため）
-_MANAGED_ENV_KEYS: list[str] = [
+# reload() で管理するキー一覧
+_MANAGED_ENV_KEYS: set[str] = {
     "DISCORD_BOT_TOKEN", "CHANNEL_ID", "HISTORY_LIMIT", "SEND_ENABLED",
     "GITLAB_BASE_URL", "GITLAB_URL", "GITLAB_TOKEN", "GITLAB_PROJECTS",
     "ISSUE_LIST_WIDTH", "WINDOW_WIDTH", "WINDOW_HEIGHT",
     "FONT_FAMILY", "FONT_SIZE", "LINE_HEIGHT",
-]
+}
+
+# 前回 .env から読み込まれたキーを記録（環境変数由来の設定を保持するため）
+_last_dotenv_keys: set[str] = set(dotenv_values().keys()) & _MANAGED_ENV_KEYS
 
 
 def reload(dotenv_path: Path | None = None) -> None:
     """Re-read .env and update module-level settings.
+
+    環境変数由来の設定は保持し、.env 由来のキーだけをクリア・再読み込みする。
 
     Args:
         dotenv_path: .env ファイルのパス。None の場合は load_dotenv() のデフォルト探索。
@@ -112,28 +117,35 @@ def reload(dotenv_path: Path | None = None) -> None:
     global ISSUE_LIST_WIDTH, ICON_PATH
     global WINDOW_WIDTH, WINDOW_HEIGHT
     global FONT_FAMILY, FONT_SIZE, LINE_HEIGHT
+    global _last_dotenv_keys
 
-    # .env から削除されたキーをデフォルトに戻すため、先にクリア
-    for key in _MANAGED_ENV_KEYS:
+    # 今回の .env の内容を取得（os.environ には触れない）
+    current_dotenv: dict[str, str | None] = dotenv_values(dotenv_path)
+    current_dotenv_keys: set[str] = set(current_dotenv.keys()) & _MANAGED_ENV_KEYS
+
+    # 前回 .env にあったキー OR 今回 .env にあるキーだけを os.environ から削除
+    # → シェル環境変数由来の設定は保持される
+    keys_to_clear: set[str] = (_last_dotenv_keys | current_dotenv_keys) & _MANAGED_ENV_KEYS
+    for key in keys_to_clear:
         os.environ.pop(key, None)
 
     load_dotenv(dotenv_path=dotenv_path, override=True)
 
     # 一時変数に読み込み（型変換失敗時は ValueError で中断、モジュール変数は無変更）
     new_token: str = os.getenv("DISCORD_BOT_TOKEN", "")
-    new_channel_id: int = int(os.getenv("CHANNEL_ID", "0"))
-    new_history_limit: int = int(os.getenv("HISTORY_LIMIT", "20"))
+    new_channel_id: int = int(os.getenv("CHANNEL_ID") or "0")
+    new_history_limit: int = int(os.getenv("HISTORY_LIMIT") or "20")
     new_send_enabled: bool = os.getenv("SEND_ENABLED", "false").lower() in ("true", "1", "yes")
     new_gitlab_base_url: str = os.getenv("GITLAB_BASE_URL", "https://gitlab.com/gitlab-org")
     new_gitlab_url: str = os.getenv("GITLAB_URL", "https://gitlab.com").rstrip("/")
     new_gitlab_token: str = os.getenv("GITLAB_TOKEN", "")
     new_gitlab_projects: list[str] = _parse_gitlab_projects(os.getenv("GITLAB_PROJECTS", ""))
-    new_issue_list_width: int = int(os.getenv("ISSUE_LIST_WIDTH", "280"))
-    new_window_width: int = int(os.getenv("WINDOW_WIDTH", "1000"))
-    new_window_height: int = int(os.getenv("WINDOW_HEIGHT", "800"))
+    new_issue_list_width: int = int(os.getenv("ISSUE_LIST_WIDTH") or "280")
+    new_window_width: int = int(os.getenv("WINDOW_WIDTH") or "1000")
+    new_window_height: int = int(os.getenv("WINDOW_HEIGHT") or "800")
     new_font_family: str = os.getenv("FONT_FAMILY", "Consolas, Cascadia Code, Noto Sans Mono CJK JP, monospace")
-    new_font_size: int = int(os.getenv("FONT_SIZE", "20"))
-    new_line_height: float = float(os.getenv("LINE_HEIGHT", "2.3"))
+    new_font_size: int = int(os.getenv("FONT_SIZE") or "20")
+    new_line_height: float = float(os.getenv("LINE_HEIGHT") or "2.3")
 
     _custom_icon: Path | None = next((p for p in _custom_icon_candidates if p.exists()), None)
     new_icon_path: Path = _custom_icon if _custom_icon else _project_root / "icon.png"
@@ -154,6 +166,7 @@ def reload(dotenv_path: Path | None = None) -> None:
     FONT_FAMILY = new_font_family
     FONT_SIZE = new_font_size
     LINE_HEIGHT = new_line_height
+    _last_dotenv_keys = current_dotenv_keys
 
 # Message log
 TIMESTAMP_WIDTH: int = 65         # Timestamp column width (px)
