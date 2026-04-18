@@ -259,6 +259,7 @@ class MainWindow(QMainWindow):
         # Signal connections (after tab bar hidden + all tabs added — §6.3)
         self._tab_bar.currentChanged.connect(self._on_tab_changed)
         self._project_panel.project_clicked.connect(self._on_project_clicked)
+        self._project_panel.open_issues_page_requested.connect(self._open_issues_page_in_browser)
 
     def _setup_shortcuts(self):
         QShortcut(QKeySequence("Ctrl+="), self, self._zoom_in)
@@ -551,6 +552,14 @@ class MainWindow(QMainWindow):
         if self._selected_project is None:
             return
         url = f"{config.GITLAB_URL}/{self._selected_project}/-/issues/{iid}"
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _open_issues_page_in_browser(self, project_path: str) -> None:
+        """Open the project's GitLab work_items page in the default web browser."""
+        url = (
+            f"{config.GITLAB_URL}/{project_path}/-/work_items"
+            f"?sort=created_date&state=all&first_page_size=100"
+        )
         QDesktopServices.openUrl(QUrl(url))
 
     def _on_issue_double_clicked(self, iid: int) -> None:

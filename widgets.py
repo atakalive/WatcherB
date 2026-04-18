@@ -28,6 +28,7 @@ class ProjectCard(QWidget):
     """Status card for a single project."""
 
     clicked = Signal(str)  # project_path を emit
+    open_issues_page_requested = Signal(str)  # project_path を emit
 
     def __init__(self, display_name: str, project_path: str | None = None, parent=None):
         super().__init__(parent)
@@ -39,6 +40,8 @@ class ProjectCard(QWidget):
         self._setup_ui()
         if self._project_path is not None:
             self.setCursor(Qt.PointingHandCursor)
+            self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.customContextMenuRequested.connect(self._on_context_menu)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -152,6 +155,17 @@ class ProjectCard(QWidget):
             self.clicked.emit(self._project_path)
         super().mousePressEvent(event)
 
+    def _on_context_menu(self, pos):
+        if self._project_path is None:
+            return
+        menu = QMenu(self)
+        open_action = menu.addAction("Open Issues Page in Browser")
+        action = menu.exec(self.mapToGlobal(pos))
+        if action == open_action:
+            # project_path follows GitLab path rules ([a-zA-Z0-9._-] and '/');
+            # no URL encoding required downstream.
+            self.open_issues_page_requested.emit(self._project_path)
+
     def set_selected(self, selected: bool):
         self._selected = selected
         if selected:
@@ -205,6 +219,7 @@ class ProjectPanel(QScrollArea):
     """Scrollable panel that arranges ProjectCards vertically."""
 
     project_clicked = Signal(str)  # project_path をリレー
+    open_issues_page_requested = Signal(str)  # project_path をリレー
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -235,6 +250,7 @@ class ProjectPanel(QScrollArea):
             display = path if short in self._collided_names else short
             card = ProjectCard(display_name=display, project_path=path)
             card.clicked.connect(self._on_card_clicked)
+            card.open_issues_page_requested.connect(self.open_issues_page_requested)
             self._path_cards[path] = card
             self._layout.insertWidget(self._layout.count() - 1, card)
 
@@ -286,6 +302,7 @@ class ProjectPanel(QScrollArea):
             else:
                 card = ProjectCard(display_name=display, project_path=path)
                 card.clicked.connect(self._on_card_clicked)
+                card.open_issues_page_requested.connect(self.open_issues_page_requested)
                 self._path_cards[path] = card
             self._layout.insertWidget(i, card)
 

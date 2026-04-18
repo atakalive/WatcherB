@@ -358,6 +358,42 @@ class TestOpenIssueInBrowser:
         assert opened_urls[0] == QUrl(f"{config.GITLAB_URL}/group/proj/-/issues/42")
 
 
+class TestOpenIssuesPageInBrowser:
+    def test_open_issues_page_in_browser_url(self, window, monkeypatch):
+        """_open_issues_page_in_browser builds correct URL and calls QDesktopServices.openUrl."""
+        opened_urls: list[QUrl] = []
+        monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened_urls.append(url))
+
+        window._open_issues_page_in_browser("user/repo")
+
+        expected = (
+            f"{config.GITLAB_URL}/user/repo/-/work_items"
+            f"?sort=created_date&state=all&first_page_size=100"
+        )
+        assert len(opened_urls) == 1
+        assert opened_urls[0] == QUrl(expected)
+
+    def test_open_issues_page_in_browser_wiring(self, qtbot, monkeypatch):
+        """Integration: project_panel.open_issues_page_requested signal → QDesktopServices.openUrl."""
+        monkeypatch.setattr(DiscordThread, "start", lambda self: None)
+        monkeypatch.setattr(GitLabThread, "start", lambda self: None)
+
+        opened_urls: list[QUrl] = []
+        monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened_urls.append(url))
+
+        w = MainWindow()
+        qtbot.addWidget(w)
+
+        w._project_panel.open_issues_page_requested.emit("group/proj")
+
+        expected = (
+            f"{config.GITLAB_URL}/group/proj/-/work_items"
+            f"?sort=created_date&state=all&first_page_size=100"
+        )
+        assert len(opened_urls) == 1
+        assert opened_urls[0] == QUrl(expected)
+
+
 class TestDoubleClickQadd:
     def test_double_click_sets_qadd_text(self, window, monkeypatch):
         """_on_issue_double_clicked sets qadd text and calls setFocus."""

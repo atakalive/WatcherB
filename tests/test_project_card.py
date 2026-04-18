@@ -1,10 +1,10 @@
 """Tests for ProjectCard and ProjectPanel (Issue #15)."""
 
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 
 import config
 from widgets import ProjectCard, ProjectPanel
@@ -441,3 +441,82 @@ class TestProjectPanelRefresh:
         assert "alpha" in panel._dynamic_cards
         assert "beta" in panel._dynamic_cards
         assert "group/gamma" in panel._path_cards
+
+
+class TestProjectCardContextMenu:
+    def test_context_menu_policy_set_for_path_card(self, qtbot):
+        card = ProjectCard(display_name="foo", project_path="group/foo")
+        qtbot.addWidget(card)
+        assert card.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu
+
+    def test_context_menu_policy_default_for_dynamic_card(self, qtbot):
+        card = ProjectCard(display_name="dyn", project_path=None)
+        qtbot.addWidget(card)
+        assert card.contextMenuPolicy() == Qt.ContextMenuPolicy.DefaultContextMenu
+
+    def test_context_menu_signal_invokes_handler(self, qtbot, monkeypatch):
+        calls: list[QPoint] = []
+
+        def fake_handler(self, pos):
+            calls.append(pos)
+
+        monkeypatch.setattr(ProjectCard, "_on_context_menu", fake_handler)
+        card = ProjectCard(display_name="foo", project_path="group/foo")
+        qtbot.addWidget(card)
+        card.customContextMenuRequested.emit(QPoint(10, 20))
+        assert len(calls) == 1
+        assert calls[0] == QPoint(10, 20)
+
+    def test_context_menu_emits_when_action_selected(self, qtbot):
+        card = ProjectCard(display_name="foo", project_path="group/foo")
+        qtbot.addWidget(card)
+        fake_action = object()
+        fake_menu = MagicMock()
+        fake_menu.addAction.return_value = fake_action
+        fake_menu.exec.return_value = fake_action
+        with patch("widgets.QMenu", return_value=fake_menu):
+            with qtbot.waitSignal(card.open_issues_page_requested, timeout=1000) as blocker:
+                card._on_context_menu(QPoint(0, 0))
+        assert blocker.args == ["group/foo"]
+        fake_menu.addAction.assert_called_once_with("Open Issues Page in Browser")
+
+    def test_context_menu_no_emit_when_cancelled(self, qtbot):
+        card = ProjectCard(display_name="foo", project_path="group/foo")
+        qtbot.addWidget(card)
+        fake_action = object()
+        fake_menu = MagicMock()
+        fake_menu.addAction.return_value = fake_action
+        fake_menu.exec.return_value = None
+        with patch("widgets.QMenu", return_value=fake_menu):
+            with qtbot.assertNotEmitted(card.open_issues_page_requested):
+                card._on_context_menu(QPoint(0, 0))
+
+    def test_context_menu_no_emit_when_no_path(self, qtbot):
+        card = ProjectCard(display_name="dyn", project_path=None)
+        qtbot.addWidget(card)
+        with patch("widgets.QMenu") as mock_menu_cls:
+            with qtbot.assertNotEmitted(card.open_issues_page_requested):
+                card._on_context_menu(QPoint(0, 0))
+            mock_menu_cls.assert_not_called()
+
+
+class TestProjectPanelContextMenuRelay:
+    def test_panel_relays_open_issues_signal_from_static_card(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["group/a"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        card = panel._path_cards["group/a"]
+        with qtbot.waitSignal(panel.open_issues_page_requested, timeout=1000) as blocker:
+            card.open_issues_page_requested.emit("group/a")
+        assert blocker.args == ["group/a"]
+
+    def test_panel_relays_after_refresh_adds_new_card(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["group/a"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["group/a", "group/b"])
+        panel.refresh_projects()
+        new_card = panel._path_cards["group/b"]
+        with qtbot.waitSignal(panel.open_issues_page_requested, timeout=1000) as blocker:
+            new_card.open_issues_page_requested.emit("group/b")
+        assert blocker.args == ["group/b"]
