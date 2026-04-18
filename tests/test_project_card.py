@@ -399,3 +399,45 @@ class TestProjectPanelRefresh:
             panel._dynamic_cards["dynX"],
         ]
         assert id(panel._dynamic_cards["dynX"]) == dyn_id
+
+    def test_refresh_removes_dynamic_card_when_path_added(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", [])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        ts = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+        panel.update_project("foo", "IMPLEMENTATION", ts)
+        assert "foo" in panel._dynamic_cards
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["group/foo"])
+        panel.refresh_projects()
+        assert "foo" not in panel._dynamic_cards
+        assert "group/foo" in panel._path_cards
+        # layout に dynamic card が残っていないこと（path card のみ + stretch）
+        widgets_after = [panel._layout.itemAt(i).widget() for i in range(panel._layout.count() - 1)]
+        assert widgets_after == [panel._path_cards["group/foo"]]
+
+    def test_refresh_removes_dynamic_card_on_collision(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", [])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        ts = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+        panel.update_project("foo", "IMPLEMENTATION", ts)
+        assert "foo" in panel._dynamic_cards
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g1/foo", "g2/foo"])
+        panel.refresh_projects()
+        assert "foo" not in panel._dynamic_cards
+        assert "foo" in panel._collided_names
+        assert "g1/foo" in panel._path_cards
+        assert "g2/foo" in panel._path_cards
+
+    def test_refresh_keeps_unrelated_dynamic_card(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", [])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        ts = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+        panel.update_project("alpha", "IMPLEMENTATION", ts)
+        panel.update_project("beta", "DONE", ts)
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["group/gamma"])
+        panel.refresh_projects()
+        assert "alpha" in panel._dynamic_cards
+        assert "beta" in panel._dynamic_cards
+        assert "group/gamma" in panel._path_cards

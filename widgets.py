@@ -289,6 +289,15 @@ class ProjectPanel(QScrollArea):
                 self._path_cards[path] = card
             self._layout.insertWidget(i, card)
 
+        # short name が new_paths のいずれかと一致する dynamic card は、
+        # 以後 update_project が path card 側へ流れるため stale 化する。除去する。
+        new_shorts = {p.rsplit("/", 1)[-1] for p in new_paths}
+        stale_dynamic = [name for name in self._dynamic_cards if name in new_shorts]
+        for name in stale_dynamic:
+            card = self._dynamic_cards.pop(name)
+            self._layout.removeWidget(card)
+            card.deleteLater()
+
         return removed
 
     def _on_card_clicked(self, project_path: str):
