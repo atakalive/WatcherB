@@ -84,12 +84,63 @@ class TestReloadConfig:
         from watcher import MainWindow
         mw = MagicMock(spec=MainWindow)
         mw.statusBar.return_value = MagicMock()
+        mw._project_panel = MagicMock()
+        mw._project_panel.refresh_projects.return_value = set()
+        mw._selected_project = None
         mock_app = MagicMock()
         monkeypatch.setattr(config, "reload", lambda **kw: None)
         with patch("watcher.QApplication.instance", return_value=mock_app):
             MainWindow._reload_config(mw)
         mock_app.setStyleSheet.assert_called_once()
         mw.statusBar().showMessage.assert_called_once_with("Configuration reloaded", 3000)
+
+    def test_reload_calls_refresh_projects(self, monkeypatch):
+        from watcher import MainWindow
+        mw = MagicMock(spec=MainWindow)
+        mw.statusBar.return_value = MagicMock()
+        mw._project_panel = MagicMock()
+        mw._project_panel.refresh_projects.return_value = set()
+        mw._selected_project = None
+        monkeypatch.setattr(config, "reload", lambda **kw: None)
+        with patch("watcher.QApplication.instance", return_value=MagicMock()):
+            MainWindow._reload_config(mw)
+        mw._project_panel.refresh_projects.assert_called_once()
+
+    def test_reload_exits_issue_mode_when_selected_removed(self, monkeypatch):
+        from watcher import MainWindow
+        mw = MagicMock(spec=MainWindow)
+        mw.statusBar.return_value = MagicMock()
+        mw._project_panel = MagicMock()
+        mw._project_panel.refresh_projects.return_value = {"g/a"}
+        mw._selected_project = "g/a"
+        monkeypatch.setattr(config, "reload", lambda **kw: None)
+        with patch("watcher.QApplication.instance", return_value=MagicMock()):
+            MainWindow._reload_config(mw)
+        mw._exit_issue_mode.assert_called_once()
+
+    def test_reload_keeps_issue_mode_when_selected_kept(self, monkeypatch):
+        from watcher import MainWindow
+        mw = MagicMock(spec=MainWindow)
+        mw.statusBar.return_value = MagicMock()
+        mw._project_panel = MagicMock()
+        mw._project_panel.refresh_projects.return_value = {"g/b"}
+        mw._selected_project = "g/a"
+        monkeypatch.setattr(config, "reload", lambda **kw: None)
+        with patch("watcher.QApplication.instance", return_value=MagicMock()):
+            MainWindow._reload_config(mw)
+        mw._exit_issue_mode.assert_not_called()
+
+    def test_reload_failure_skips_refresh_projects(self, monkeypatch):
+        from watcher import MainWindow
+        mw = MagicMock(spec=MainWindow)
+        mw.statusBar.return_value = MagicMock()
+        mw._project_panel = MagicMock()
+        def raise_error(**kw):
+            raise ValueError("bad")
+        monkeypatch.setattr(config, "reload", raise_error)
+        with patch("watcher.QApplication.instance", return_value=MagicMock()):
+            MainWindow._reload_config(mw)
+        mw._project_panel.refresh_projects.assert_not_called()
 
     def test_reload_failure_shows_error(self, monkeypatch):
         """失敗時にステータスバーにエラーが表示され、QSS は更新されないこと."""

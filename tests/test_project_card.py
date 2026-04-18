@@ -276,3 +276,126 @@ class TestProjectPanelGetState:
         panel = ProjectPanel()
         qtbot.addWidget(panel)
         assert panel.get_state("foo") is None
+
+
+class TestProjectPanelRefresh:
+    def test_refresh_adds_new_project(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/a"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/a", "g/b"])
+        removed = panel.refresh_projects()
+        assert removed == set()
+        assert "g/a" in panel._path_cards
+        assert "g/b" in panel._path_cards
+
+    def test_refresh_removes_missing_project(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/a", "g/b"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/a"])
+        removed = panel.refresh_projects()
+        assert removed == {"g/b"}
+        assert "g/b" not in panel._path_cards
+
+    def test_refresh_preserves_existing_card_state(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/a"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        ts = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+        panel._path_cards["g/a"].update_state("IMPLEMENTATION", ts)
+        original_id = id(panel._path_cards["g/a"])
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/a", "g/b"])
+        panel.refresh_projects()
+        assert id(panel._path_cards["g/a"]) == original_id
+        assert panel._path_cards["g/a"].state == "IMPLEMENTATION"
+
+    def test_refresh_recomputes_collision(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g1/foo"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        assert panel._name_to_path.get("foo") == "g1/foo"
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g1/foo", "g2/foo"])
+        panel.refresh_projects()
+        assert "foo" in panel._collided_names
+        assert "foo" not in panel._name_to_path
+        # 逆方向: collision 解消
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g1/foo"])
+        panel.refresh_projects()
+        assert "foo" not in panel._collided_names
+        assert panel._name_to_path.get("foo") == "g1/foo"
+
+    def test_refresh_updates_display_name_on_collision_change(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g1/foo", "g2/foo"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        card = panel._path_cards["g1/foo"]
+        assert card.display_name == "g1/foo"
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g1/foo"])
+        panel.refresh_projects()
+        assert card.display_name == "foo"
+        assert card._name_label.text() == "foo"
+
+    def test_refresh_clears_selected_when_removed(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/a"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        panel.select_project("g/a")
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", [])
+        panel.refresh_projects()
+        assert panel._selected_card is None
+
+    def test_refresh_noop(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/a", "g/b"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        ids_before = {p: id(c) for p, c in panel._path_cards.items()}
+        name_to_path_before = dict(panel._name_to_path)
+        collided_before = set(panel._collided_names)
+        removed = panel.refresh_projects()
+        assert removed == set()
+        assert {p: id(c) for p, c in panel._path_cards.items()} == ids_before
+        assert panel._name_to_path == name_to_path_before
+        assert panel._collided_names == collided_before
+
+    def test_refresh_reorders_layout(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/a", "g/b", "g/c"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        ids_before = {p: id(c) for p, c in panel._path_cards.items()}
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/c", "g/a", "g/b"])
+        panel.refresh_projects()
+        assert {p: id(c) for p, c in panel._path_cards.items()} == ids_before
+        widgets_in_layout = [
+            panel._layout.itemAt(i).widget() for i in range(3)
+        ]
+        assert widgets_in_layout == [
+            panel._path_cards["g/c"],
+            panel._path_cards["g/a"],
+            panel._path_cards["g/b"],
+        ]
+
+    def test_refresh_preserves_dynamic_card_position(self, qtbot, monkeypatch):
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/a", "g/b"])
+        panel = ProjectPanel()
+        qtbot.addWidget(panel)
+        ts = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+        panel.update_project("dynX", "IMPLEMENTATION", ts)
+        dyn_id = id(panel._dynamic_cards["dynX"])
+        # 初期 layout: [g/a, g/b, dynX, stretch]
+        widgets_before = [panel._layout.itemAt(i).widget() for i in range(3)]
+        assert widgets_before == [
+            panel._path_cards["g/a"],
+            panel._path_cards["g/b"],
+            panel._dynamic_cards["dynX"],
+        ]
+        monkeypatch.setattr(config, "GITLAB_PROJECTS", ["g/b", "g/a", "g/c"])
+        panel.refresh_projects()
+        widgets_after = [panel._layout.itemAt(i).widget() for i in range(4)]
+        assert widgets_after == [
+            panel._path_cards["g/b"],
+            panel._path_cards["g/a"],
+            panel._path_cards["g/c"],
+            panel._dynamic_cards["dynX"],
+        ]
+        assert id(panel._dynamic_cards["dynX"]) == dyn_id

@@ -290,6 +290,9 @@ class MainWindow(QMainWindow):
         except (ValueError, OSError) as exc:
             self.statusBar().showMessage(f"Reload failed: {exc}", 5000)
             return
+        removed = self._project_panel.refresh_projects()
+        if self._selected_project is not None and self._selected_project in removed:
+            self._exit_issue_mode()
         QApplication.instance().setStyleSheet(_build_global_qss())
         self.statusBar().showMessage("Configuration reloaded", 3000)
 

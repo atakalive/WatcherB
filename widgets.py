@@ -182,6 +182,12 @@ class ProjectCard(QWidget):
         self._issue_label.setText(f"Issue: {links}")
         self._issue_label.show()
 
+    def set_display_name(self, name: str) -> None:
+        """collision 状態変化で display name が切り替わる場合に呼ぶ。
+        同じ name での反復呼出は冪等（QLabel.setText は no-op 扱い）。"""
+        self._display_name = name
+        self._name_label.setText(name)
+
     @property
     def project_path(self) -> str | None:
         return self._project_path
@@ -222,16 +228,7 @@ class ProjectPanel(QScrollArea):
 
     def _prepopulate(self):
         """起動時に GITLAB_PROJECTS の全エントリに対して ProjectCard を生成。"""
-        short_to_paths: dict[str, list[str]] = {}
-        for path in config.GITLAB_PROJECTS:
-            short = path.rsplit("/", 1)[-1]
-            short_to_paths.setdefault(short, []).append(path)
-
-        for short, paths in short_to_paths.items():
-            if len(paths) == 1:
-                self._name_to_path[short] = paths[0]
-
-        self._collided_names = {short for short, paths in short_to_paths.items() if len(paths) > 1}
+        self._rebuild_name_resolution(config.GITLAB_PROJECTS)
 
         for path in config.GITLAB_PROJECTS:
             short = path.rsplit("/", 1)[-1]
@@ -246,6 +243,53 @@ class ProjectPanel(QScrollArea):
             logger = logging.getLogger(__name__)
             for short in sorted(self._collided_names):
                 logger.warning("Display name collision for '%s' — using full paths", short)
+
+    def _rebuild_name_resolution(self, paths: list[str]) -> None:
+        short_to_paths: dict[str, list[str]] = {}
+        for path in paths:
+            short = path.rsplit("/", 1)[-1]
+            short_to_paths.setdefault(short, []).append(path)
+        self._name_to_path = {
+            short: plist[0] for short, plist in short_to_paths.items() if len(plist) == 1
+        }
+        self._collided_names = {
+            short for short, plist in short_to_paths.items() if len(plist) > 1
+        }
+
+    def refresh_projects(self) -> set[str]:
+        """現在の config.GITLAB_PROJECTS と _path_cards を同期する。
+
+        Returns:
+            今回の refresh で _path_cards から削除された project_path の集合。
+        """
+        new_paths = list(config.GITLAB_PROJECTS)
+        removed = set(self._path_cards) - set(new_paths)
+
+        for path in removed:
+            card = self._path_cards.pop(path)
+            if self._selected_card is card:
+                self._selected_card = None
+            self._layout.removeWidget(card)
+            card.deleteLater()
+
+        for card in self._path_cards.values():
+            self._layout.removeWidget(card)
+
+        self._rebuild_name_resolution(new_paths)
+
+        for i, path in enumerate(new_paths):
+            short = path.rsplit("/", 1)[-1]
+            display = path if short in self._collided_names else short
+            if path in self._path_cards:
+                card = self._path_cards[path]
+                card.set_display_name(display)
+            else:
+                card = ProjectCard(display_name=display, project_path=path)
+                card.clicked.connect(self._on_card_clicked)
+                self._path_cards[path] = card
+            self._layout.insertWidget(i, card)
+
+        return removed
 
     def _on_card_clicked(self, project_path: str):
         self.project_clicked.emit(project_path)
