@@ -393,6 +393,7 @@ class WatcherTrayIcon(QSystemTrayIcon):
 
     show_requested = Signal()
     reload_requested = Signal()
+    config_requested = Signal()
     exit_requested = Signal()
 
     def __init__(self, parent=None):
@@ -413,6 +414,10 @@ class WatcherTrayIcon(QSystemTrayIcon):
         show_action = QAction("Show", menu)
         show_action.triggered.connect(self.show_requested.emit)
         menu.addAction(show_action)
+
+        config_action = QAction("Config", menu)
+        config_action.triggered.connect(self.config_requested.emit)
+        menu.addAction(config_action)
 
         reload_action = QAction("Reload", menu)
         reload_action.triggered.connect(self.reload_requested.emit)

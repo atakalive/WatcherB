@@ -156,3 +156,66 @@ class TestReloadConfig:
         mock_app.setStyleSheet.assert_not_called()
         msg = mw.statusBar().showMessage.call_args[0][0]
         assert "bad value" in msg
+
+
+class TestOpenEnvFile:
+    """MainWindow._open_env_file() の配線テスト."""
+
+    def test_opens_env_when_exists(self, monkeypatch, tmp_path):
+        from watcher import MainWindow
+        env_file = tmp_path / ".env"
+        env_file.write_text("")
+        monkeypatch.setattr(config, "ENV_PATH", env_file)
+        opened = []
+        monkeypatch.setattr(
+            "watcher.QDesktopServices.openUrl",
+            lambda url: opened.append(url) or True,
+        )
+        mw = MagicMock(spec=MainWindow)
+        MainWindow._open_env_file(mw)
+        assert len(opened) == 1
+        assert opened[0].toLocalFile().endswith(".env")
+
+    def test_shows_message_when_env_missing(self, monkeypatch, tmp_path):
+        from watcher import MainWindow
+        monkeypatch.setattr(config, "ENV_PATH", tmp_path / "nonexistent.env")
+        mw = MagicMock(spec=MainWindow)
+        mw.statusBar.return_value = MagicMock()
+        MainWindow._open_env_file(mw)
+        mw.statusBar().showMessage.assert_called_once_with(".env not found", 5000)
+
+    def test_shows_message_when_env_is_directory(self, monkeypatch, tmp_path):
+        from watcher import MainWindow
+        env_dir = tmp_path / ".env"
+        env_dir.mkdir()
+        monkeypatch.setattr(config, "ENV_PATH", env_dir)
+        mw = MagicMock(spec=MainWindow)
+        mw.statusBar.return_value = MagicMock()
+        MainWindow._open_env_file(mw)
+        mw.statusBar().showMessage.assert_called_once_with(".env not found", 5000)
+
+    def test_shows_message_when_open_fails(self, monkeypatch, tmp_path):
+        from watcher import MainWindow
+        env_file = tmp_path / ".env"
+        env_file.write_text("")
+        monkeypatch.setattr(config, "ENV_PATH", env_file)
+        monkeypatch.setattr("watcher.QDesktopServices.openUrl", lambda url: False)
+        mw = MagicMock(spec=MainWindow)
+        mw.statusBar.return_value = MagicMock()
+        MainWindow._open_env_file(mw)
+        mw.statusBar().showMessage.assert_called_once_with("Failed to open .env", 5000)
+
+    def test_shows_message_when_open_raises(self, monkeypatch, tmp_path):
+        from watcher import MainWindow
+        env_file = tmp_path / ".env"
+        env_file.write_text("")
+        monkeypatch.setattr(config, "ENV_PATH", env_file)
+        def raise_err(url):
+            raise RuntimeError("Qt error")
+        monkeypatch.setattr("watcher.QDesktopServices.openUrl", raise_err)
+        mw = MagicMock(spec=MainWindow)
+        mw.statusBar.return_value = MagicMock()
+        MainWindow._open_env_file(mw)
+        msg = mw.statusBar().showMessage.call_args[0][0]
+        assert "Failed to open .env" in msg
+        assert "Qt error" in msg

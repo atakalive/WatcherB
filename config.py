@@ -32,6 +32,7 @@ _project_root = Path(__file__).parent
 _custom_icon_candidates = [_project_root / "my_icon.png", _project_root / "my_icon.jpg"]
 _custom_icon = next((p for p in _custom_icon_candidates if p.exists()), None)
 ICON_PATH: Path = _custom_icon if _custom_icon else _project_root / "icon.png"
+ENV_PATH: Path = _project_root / ".env"
 
 # UI
 WINDOW_TITLE: str = "WatcherB"
