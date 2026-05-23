@@ -297,7 +297,8 @@ class MainWindow(QMainWindow):
         QApplication.instance().setStyleSheet(_build_global_qss())
         self.statusBar().showMessage("Configuration reloaded", 3000)
 
-    def _open_env_file(self):
+    def _open_env_file(self) -> None:
+        """Open .env in the OS default text editor."""
         if not config.ENV_PATH.is_file():
             self.statusBar().showMessage(".env not found", 5000)
             return
