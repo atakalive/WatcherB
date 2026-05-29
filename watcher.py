@@ -321,11 +321,15 @@ class MainWindow(QMainWindow):
         self._tray.show()
 
     def _toggle_window(self):
-        if self.isVisible():
-            self.hide()
-        else:
+        if not self.isVisible() or self.isMinimized():
             self.showNormal()
+            self.raise_()
             self.activateWindow()
+        elif not self.isActiveWindow():
+            self.raise_()
+            self.activateWindow()
+        else:
+            self.hide()
 
     def _exit_app(self):
         if self._tray:
