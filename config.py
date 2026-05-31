@@ -207,6 +207,8 @@ STATE_COLORS: dict = {
 
 # Phase 2: System tray
 TRAY_TOOLTIP: str = "WatcherB - Discord Monitor"
+# トレイクリック時、直前の非アクティブ化からこの秒数以内なら「クリック前は前面だった」とみなし格納する
+TRAY_FOREGROUND_GRACE_SEC: float = 0.3
 
 # GitLab Issue Browser: pagination
 MAX_PAGES: int = 20  # ページネーション上限（20 × 100 = 2000 items）

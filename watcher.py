@@ -3,8 +3,9 @@
 import html
 import re
 import sys
+import time
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QEvent, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -154,6 +155,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._force_quit = False
         self._selected_project: str | None = None
+        self._deactivated_at: float = 0.0
         self._setup_ui()
         self._setup_shortcuts()
         self._setup_tray()
@@ -320,16 +322,29 @@ class MainWindow(QMainWindow):
         self._tray.exit_requested.connect(self._exit_app)
         self._tray.show()
 
+    def changeEvent(self, event):
+        # トレイクリックでウインドウが非アクティブ化された時刻を記録する。
+        # Windows ではトレイクリックがウインドウを非アクティブ化するため、_toggle_window
+        # 到達時には isActiveWindow() が既に False になっている。直前の非アクティブ化時刻を
+        # 手掛かりに「クリック前は前面だった」を判定する。
+        if event.type() == QEvent.Type.ActivationChange and not self.isActiveWindow():
+            self._deactivated_at = time.monotonic()
+        super().changeEvent(event)
+
     def _toggle_window(self):
         if not self.isVisible() or self.isMinimized():
             self.showNormal()
             self.raise_()
             self.activateWindow()
-        elif not self.isActiveWindow():
+        elif self.isActiveWindow() or (
+            time.monotonic() - self._deactivated_at < config.TRAY_FOREGROUND_GRACE_SEC
+        ):
+            # 前面にあった（または Windows でクリック直前まで前面だった）→ 格納
+            self.hide()
+        else:
+            # 背面にあった → 最前面化
             self.raise_()
             self.activateWindow()
-        else:
-            self.hide()
 
     def _exit_app(self):
         if self._tray:
