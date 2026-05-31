@@ -36,6 +36,7 @@ issue_browser/
 4. **ダークテーマ固定。** config.py の COLORS を使え
 5. **Windows / Linux 両対応。** OS固有APIを使うな
 6. **GitLab API (requests) も QThread 内で実行し、Qt Signal でメインスレッドに通知する。** DiscordThread と同パターンだが asyncio ではなく同期 HTTP + QWaitCondition を使う
+7. **コミットメッセージは英語で書け。** subject・body とも英語にする（Issue / PR の本文は従来どおり日本語可）
 
 ## メッセージ分類
 
