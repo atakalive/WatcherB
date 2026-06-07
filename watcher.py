@@ -9,9 +9,12 @@ from PySide6.QtCore import QEvent, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
+    QPushButton,
     QSplitter,
     QStackedWidget,
     QStatusBar,
@@ -230,10 +233,25 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self._right_stack)
 
         if config.SEND_ENABLED:
+            send_row = QWidget()
+            row = QHBoxLayout(send_row)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(4)
+
             self._send_input = QLineEdit()
             self._send_input.setPlaceholderText("Send command to #gokrax...")
             self._send_input.returnPressed.connect(self._on_send)
-            right_layout.addWidget(self._send_input)
+            row.addWidget(self._send_input, 1)  # 入力欄が伸縮
+
+            for label, command, confirm in config.SEND_BUTTONS:
+                btn = QPushButton(label)
+                btn.clicked.connect(
+                    lambda _checked=False, cmd=command, cf=confirm:
+                        self._on_command_button(cmd, cf)
+                )
+                row.addWidget(btn)
+
+            right_layout.addWidget(send_row)
         else:
             self._send_input = None
 
@@ -482,6 +500,23 @@ class MainWindow(QMainWindow):
             return
         self._discord_thread.send_message(text)
         self._send_input.clear()
+
+    def _on_command_button(self, command: str, confirm: bool) -> None:
+        """Send a predefined command when a quick-send button is clicked."""
+        command = command.strip()
+        if not command:
+            return
+        if confirm:
+            reply = QMessageBox.question(
+                self,
+                "Confirm",
+                f"Send command '{command}' to #gokrax?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,  # default = No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        self._discord_thread.send_message(command)
 
     def _on_issues_loaded(
         self, project: str, state: str, request_id: int, truncated: bool, issues: list

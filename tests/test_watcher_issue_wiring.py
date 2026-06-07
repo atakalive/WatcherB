@@ -430,3 +430,39 @@ class TestDoubleClickQadd:
         w._issue_list.issue_double_clicked.emit(10)
 
         assert w._send_input.text() == "qadd proj 10 "
+
+
+class TestCommandButtons:
+    def test_button_sends_without_confirm(self, window, monkeypatch):
+        sent = []
+        monkeypatch.setattr(window._discord_thread, "send_message",
+                            lambda c: sent.append(c))
+        window._on_command_button("status", False)
+        assert sent == ["status"]
+
+    def test_qrun_confirm_yes_sends(self, window, monkeypatch):
+        from PySide6.QtWidgets import QMessageBox
+        sent = []
+        monkeypatch.setattr(window._discord_thread, "send_message",
+                            lambda c: sent.append(c))
+        monkeypatch.setattr("watcher.QMessageBox.question",
+                            lambda *a, **k: QMessageBox.StandardButton.Yes)
+        window._on_command_button("qrun", True)
+        assert sent == ["qrun"]
+
+    def test_qrun_confirm_no_does_not_send(self, window, monkeypatch):
+        from PySide6.QtWidgets import QMessageBox
+        sent = []
+        monkeypatch.setattr(window._discord_thread, "send_message",
+                            lambda c: sent.append(c))
+        monkeypatch.setattr("watcher.QMessageBox.question",
+                            lambda *a, **k: QMessageBox.StandardButton.No)
+        window._on_command_button("qrun", True)
+        assert sent == []
+
+    def test_empty_command_not_sent(self, window, monkeypatch):
+        sent = []
+        monkeypatch.setattr(window._discord_thread, "send_message",
+                            lambda c: sent.append(c))
+        window._on_command_button("  ", False)
+        assert sent == []

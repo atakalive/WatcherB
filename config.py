@@ -13,6 +13,14 @@ HISTORY_LIMIT: int = int(os.getenv("HISTORY_LIMIT", "20"))
 
 # Command sending feature (default OFF. Set True and restart to enable)
 SEND_ENABLED: bool = os.getenv("SEND_ENABLED", "false").lower() in ("true", "1", "yes")
+
+# Quick-send command buttons: (label, command, needs_confirm)
+# qrun starts batch execution of the queue, so it requires confirmation.
+SEND_BUTTONS: list[tuple[str, str, bool]] = [
+    ("qrun", "qrun", True),
+    ("qstatus", "qstatus", False),
+    ("status", "status", False),
+]
 GITLAB_BASE_URL: str = os.getenv("GITLAB_BASE_URL", "https://gitlab.com/gitlab-org")
 
 # GitLab Issue Browser
