@@ -19,6 +19,7 @@ from watcher import MainWindow
 def window(qtbot, monkeypatch):
     monkeypatch.setattr(DiscordThread, "start", lambda self: None)
     monkeypatch.setattr(GitLabThread, "start", lambda self: None)
+    monkeypatch.setattr(config, "STATUS_POLL_ENABLED", False)
 
     w = MainWindow()
     qtbot.addWidget(w)
@@ -344,6 +345,7 @@ class TestOpenIssueInBrowser:
         """Integration: open_in_browser signal → QDesktopServices.openUrl."""
         monkeypatch.setattr(DiscordThread, "start", lambda self: None)
         monkeypatch.setattr(GitLabThread, "start", lambda self: None)
+        monkeypatch.setattr(config, "STATUS_POLL_ENABLED", False)
 
         opened_urls = []
         monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened_urls.append(url))
@@ -377,6 +379,7 @@ class TestOpenIssuesPageInBrowser:
         """Integration: project_panel.open_issues_page_requested signal → QDesktopServices.openUrl."""
         monkeypatch.setattr(DiscordThread, "start", lambda self: None)
         monkeypatch.setattr(GitLabThread, "start", lambda self: None)
+        monkeypatch.setattr(config, "STATUS_POLL_ENABLED", False)
 
         opened_urls: list[QUrl] = []
         monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened_urls.append(url))
@@ -419,6 +422,7 @@ class TestDoubleClickQadd:
         """Integration: issue_double_clicked signal → _send_input gets qadd text."""
         monkeypatch.setattr(DiscordThread, "start", lambda self: None)
         monkeypatch.setattr(GitLabThread, "start", lambda self: None)
+        monkeypatch.setattr(config, "STATUS_POLL_ENABLED", False)
         monkeypatch.setattr(config, "SEND_ENABLED", True)
 
         w = MainWindow()

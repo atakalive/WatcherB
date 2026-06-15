@@ -14,6 +14,7 @@ from watcher import MainWindow, _build_global_qss
 def window(qtbot, monkeypatch):
     monkeypatch.setattr(DiscordThread, "start", lambda self: None)
     monkeypatch.setattr(GitLabThread, "start", lambda self: None)
+    monkeypatch.setattr(config, "STATUS_POLL_ENABLED", False)
     w = MainWindow()
     qtbot.addWidget(w)
     yield w

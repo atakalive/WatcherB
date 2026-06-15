@@ -220,3 +220,25 @@ TRAY_FOREGROUND_GRACE_SEC: float = 0.3
 
 # GitLab Issue Browser: pagination
 MAX_PAGES: int = 20  # ページネーション上限（20 × 100 = 2000 items）
+
+# LLM Provider Status Polling
+STATUS_POLL_ENABLED: bool = os.getenv("STATUS_POLL_ENABLED", "true").lower() in ("true", "1", "yes")
+# 間隔は最低 15 秒に clamp（0/負値での tight-loop ポーリングを防ぐ。euler R1 P2 対応）
+STATUS_POLL_INTERVAL: int = max(15, int(os.getenv("STATUS_POLL_INTERVAL", "600")))  # 秒 (既定=10分)
+STATUS_POLL_TIMEOUT: int = int(os.getenv("STATUS_POLL_TIMEOUT", "5"))      # 秒 (connect/read 各々)
+# 連続でこの回数だけ「全プロバイダ unknown」が続いたら監視不能を控えめ表示（pascal R1 P1-2 対応）
+STATUS_POLL_UNKNOWN_STREAK_ALERT: int = 3
+# 単一プロバイダがこの回数だけ連続 unknown なら WARNING ログを1回出す（誤 url 等の診断。dijkstra R2 P2-c）
+# 既定 10分間隔なら約1時間。UI には出さずログのみ。
+STATUS_POLL_PROVIDER_UNKNOWN_WARN: int = 6
+
+# プロバイダ定義（静的）。type は "statuspage" か "gcp"
+STATUS_PROVIDERS: list[dict] = [
+    {"key": "anthropic", "name": "Claude",   "type": "statuspage", "url": "https://status.claude.com"},
+    {"key": "openai",    "name": "OpenAI",   "type": "statuspage", "url": "https://status.openai.com"},
+    {"key": "github",    "name": "GitHub",   "type": "statuspage", "url": "https://www.githubstatus.com"},
+    {"key": "moonshot",  "name": "Kimi",     "type": "statuspage", "url": "https://status.moonshot.cn"},
+    {"key": "google",    "name": "Gemini",   "type": "gcp",
+     "url": "https://status.cloud.google.com/incidents.json",
+     "match": ["Gemini", "Vertex"]},
+]

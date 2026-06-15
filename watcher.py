@@ -1,6 +1,7 @@
 """WatcherB — Discord #gokrax real-time monitoring GUI."""
 
 import html
+import logging
 import re
 import sys
 import time
@@ -30,7 +31,16 @@ from discord_client import DiscordThread
 from issue_browser.gitlab_client import GitLabThread
 from issue_browser.widgets import IssueDetailWidget, IssueListWidget
 from message_parser import classify, extract_project, parse_message
+from status_monitor import StatusMonitorThread
 from widgets import ProjectPanel, SplashScreen, WatcherTrayIcon
+
+
+_logger = logging.getLogger(__name__)
+
+
+def _truncate(text: str, limit: int = 100) -> str:
+    """ツールチップ用に長文 description を切り詰める（pascal R1 P2-5 対応）。"""
+    return text if len(text) <= limit else text[:limit] + "…"
 
 
 # Alternation order: longer patterns before shorter ones (longest-match-first).
@@ -157,6 +167,8 @@ class MainWindow(QMainWindow):
     def __init__(self, splash: SplashScreen | None = None):
         super().__init__()
         self._force_quit = False
+        self._status_thread = None
+        self._status_unknown_streak = 0
         self._selected_project: str | None = None
         self._deactivated_at: float = 0.0
         self._setup_ui()
@@ -181,6 +193,7 @@ class MainWindow(QMainWindow):
             splash.set_progress(50, "Connecting to Discord...")
 
         self._setup_discord()
+        self._setup_status_monitor()
 
     def _setup_ui(self):
         self.setWindowTitle(config.WINDOW_TITLE)
@@ -271,9 +284,12 @@ class MainWindow(QMainWindow):
 
         self._status_label = QLabel("Disconnected")
         self._last_msg_label = QLabel("")
+        self._llm_status_label = QLabel("")
+        self._llm_status_label.hide()
         status_bar = QStatusBar()
         status_bar.addWidget(self._status_label)
         status_bar.addPermanentWidget(self._last_msg_label)
+        status_bar.addPermanentWidget(self._llm_status_label)
         self.setStatusBar(status_bar)
 
         # Signal connections (after tab bar hidden + all tabs added — §6.3)
@@ -376,6 +392,47 @@ class MainWindow(QMainWindow):
         self._discord_thread.history_loaded.connect(self._on_history_loaded)
         self._discord_thread.connection_changed.connect(self._on_connection_changed)
         self._discord_thread.start()
+
+    def _setup_status_monitor(self):
+        if not config.STATUS_POLL_ENABLED:
+            return
+        self._status_thread = StatusMonitorThread(parent=self)
+        self._status_thread.statuses_updated.connect(self._on_statuses_updated)
+        self._status_thread.start()
+
+    def _on_statuses_updated(self, statuses):
+        down = [s for s in statuses if s["level"] in ("minor", "major")]
+        if down:
+            self._status_unknown_streak = 0
+            names = ", ".join(s["name"] for s in down)
+            self._llm_status_label.setText(f"⚠ {names}")
+            has_major = any(s["level"] == "major" for s in down)
+            color = config.COLORS["red"] if has_major else config.COLORS["yellow"]
+            self._llm_status_label.setStyleSheet(f"color: {color};")
+            self._llm_status_label.setToolTip(
+                "\n".join(f"{s['name']}: {_truncate(s['description'])}" for s in down)
+            )
+            self._llm_status_label.show()
+            return
+        # down が無い: 全プロバイダ ok/unknown
+        if statuses and all(s["level"] == "unknown" for s in statuses):
+            self._status_unknown_streak += 1
+        else:
+            self._status_unknown_streak = 0
+        if self._status_unknown_streak >= config.STATUS_POLL_UNKNOWN_STREAK_ALERT:
+            if self._status_unknown_streak == config.STATUS_POLL_UNKNOWN_STREAK_ALERT:
+                _logger.warning(
+                    "LLM status monitoring unavailable: %d consecutive all-unknown polls",
+                    self._status_unknown_streak,
+                )
+            self._llm_status_label.setText("⚠ status check unavailable")
+            self._llm_status_label.setStyleSheet(f"color: {config.COLORS['subtext']};")
+            self._llm_status_label.setToolTip(
+                "All LLM provider status checks are failing (network or endpoint issue)."
+            )
+            self._llm_status_label.show()
+        else:
+            self._llm_status_label.hide()
 
     def _on_message_received(self, msg_dict: dict):
         content = msg_dict["content"]
@@ -645,6 +702,11 @@ class MainWindow(QMainWindow):
             # Exit from tray menu "Exit"
             self._gitlab_thread.shutdown()
             self._gitlab_thread.wait(5000)
+            if self._status_thread is not None:
+                self._status_thread.shutdown()
+                if not self._status_thread.wait(5000):
+                    self._status_thread.terminate()
+                    self._status_thread.wait(2000)
             if self._discord_thread.isRunning():
                 self._discord_thread.request_stop()
                 if not self._discord_thread.wait(5000):
