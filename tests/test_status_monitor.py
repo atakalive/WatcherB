@@ -375,7 +375,6 @@ class TestRunShutdown:
 
         thread._fetch_one = fake_fetch
         # Shutdown becomes True after the first provider is fetched.
-        state = {"shutdown": False}
         seen = {"n": 0}
 
         def fake_is_shutdown():
@@ -418,3 +417,41 @@ class TestTrackProviderUnknown:
                 thread._track_provider_unknown(unknown)
             warnings = [r for r in caplog.records if r.levelname == "WARNING"]
             assert len(warnings) == 0
+
+
+class TestSleepInterruptible:
+    """_sleep_interruptible は停止契約の中核ヘルパ（dijkstra code R1 P2-2）。"""
+
+    def test_returns_true_immediately_when_shutdown(self, monkeypatch):
+        thread = StatusMonitorThread()
+        monkeypatch.setattr(thread, "_is_shutdown", lambda: True)
+        sleep_calls: list[float] = []
+        monkeypatch.setattr("status_monitor.time.sleep", lambda s: sleep_calls.append(s))
+        # shutdown 中はループ先頭で即 True、一度も sleep しない
+        assert thread._sleep_interruptible(10.0) is True
+        assert sleep_calls == []
+
+    def test_total_sleep_matches_seconds(self, monkeypatch):
+        thread = StatusMonitorThread()
+        monkeypatch.setattr(thread, "_is_shutdown", lambda: False)
+        sleep_calls: list[float] = []
+        monkeypatch.setattr("status_monitor.time.sleep", lambda s: sleep_calls.append(s))
+        # shutdown でなければ累計 sleep は seconds 相当、各チャンクは step(0.2) 以下
+        assert thread._sleep_interruptible(1.0) is False
+        assert sum(sleep_calls) == pytest.approx(1.0)
+        assert all(s <= 0.2 + 1e-9 for s in sleep_calls)
+
+    def test_stops_midway_when_shutdown_set(self, monkeypatch):
+        thread = StatusMonitorThread()
+        checks = {"n": 0}
+
+        def fake_is_shutdown():
+            checks["n"] += 1
+            return checks["n"] > 3  # 4 回目のチェックで True
+
+        monkeypatch.setattr(thread, "_is_shutdown", fake_is_shutdown)
+        sleep_calls: list[float] = []
+        monkeypatch.setattr("status_monitor.time.sleep", lambda s: sleep_calls.append(s))
+        # 途中で shutdown が立つと True を返し、それ以降は sleep しない
+        assert thread._sleep_interruptible(100.0) is True
+        assert len(sleep_calls) == 3

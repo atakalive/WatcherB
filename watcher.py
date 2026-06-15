@@ -400,7 +400,7 @@ class MainWindow(QMainWindow):
         self._status_thread.statuses_updated.connect(self._on_statuses_updated)
         self._status_thread.start()
 
-    def _on_statuses_updated(self, statuses):
+    def _on_statuses_updated(self, statuses: list):
         down = [s for s in statuses if s["level"] in ("minor", "major")]
         if down:
             self._status_unknown_streak = 0
