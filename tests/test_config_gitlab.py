@@ -1,4 +1,6 @@
-import importlib
+import os
+
+import pytest
 
 import config
 from config import _parse_gitlab_projects
@@ -27,13 +29,43 @@ class TestParseGitlabProjects:
 class TestConfigModuleLevelVars:
     """Test that module-level variables are correctly evaluated from env vars.
 
-    Each test sets env vars via monkeypatch, reloads config, and asserts.
-    monkeypatch automatically restores env vars after each test.
+    各テストは monkeypatch で env var を設定し、config を再読込して assert する。
+    再読込は public な config.reload() に空の一時 .env を dotenv_path で渡して行い、
+    開発機プロジェクトルートの本番 .env に依存しない hermetic な構成にする
+    （旧実装はモジュールトップの load_dotenv() を再実行する経路で実 .env の値を
+    os.environ に載せ、test_gitlab_token_default 等を壊していた。WatcherB #38）。
     """
 
+    @pytest.fixture(autouse=True)
+    def _hermetic_config(self, tmp_path):
+        """空の一時 .env を用意し、config のモジュール変数と os.environ を保存・復元する."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("")
+        self._empty_env = env_file
+        # reload() が mutate する全属性（managed env keys + ICON_PATH）を動的に列挙する。
+        # config 側に managed key が追加されてもテストの保存漏れが起きないようにする。
+        saved_config = {
+            attr: getattr(config, attr)
+            for attr in (config._MANAGED_ENV_KEYS | {"ICON_PATH"})
+        }
+        saved_env = os.environ.copy()
+        saved_dotenv_keys = config._last_dotenv_keys.copy()
+        yield
+        for attr, val in saved_config.items():
+            setattr(config, attr, val)
+        os.environ.clear()
+        os.environ.update(saved_env)
+        config._last_dotenv_keys = saved_dotenv_keys
+
     def _reload(self):
-        """Reload config module to re-evaluate module-level variables."""
-        importlib.reload(config)
+        """Re-evaluate config module-level vars hermetically from a tmp empty .env.
+
+        _last_dotenv_keys を空にしてから空 .env で reload することで、reload が os.environ の
+        managed key を pop して monkeypatch 値を消す副作用を防ぎ、os.environ（= monkeypatch で
+        設定した値）だけを反映させる。
+        """
+        config._last_dotenv_keys = set()
+        config.reload(dotenv_path=self._empty_env)
 
     def test_gitlab_url_default(self, monkeypatch):
         monkeypatch.delenv("GITLAB_URL", raising=False)
