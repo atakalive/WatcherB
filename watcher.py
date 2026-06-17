@@ -117,7 +117,7 @@ class MessageLog(QTextBrowser):
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_value_changed)
         self.verticalScrollBar().rangeChanged.connect(self._on_range_changed)
 
-    def _render_block(self, content, created_at, msg_type) -> str:
+    def _render_block(self, content: str, created_at, msg_type: str) -> str:
         """Build the HTML table block for a single record."""
         if created_at is not None:
             time_str = created_at.astimezone().strftime("%H:%M")
@@ -155,7 +155,7 @@ class MessageLog(QTextBrowser):
 
         return f'<table cellpadding="0" cellspacing="0" width="100%">{rows}</table>'
 
-    def _add_record(self, content, created_at, msg_type, message_id=None):
+    def _add_record(self, content: str, created_at, msg_type: str, message_id: int | None = None) -> None:
         """Register a record (assign key + evict), without re-rendering."""
         key = message_id
         if key is None:
@@ -168,12 +168,12 @@ class MessageLog(QTextBrowser):
         while len(self._records) > cap:
             self._records.popitem(last=False)   # evict oldest (display == records always)
 
-    def append_message(self, content: str, created_at, msg_type: str, message_id=None):
+    def append_message(self, content: str, created_at, msg_type: str, message_id: int | None = None) -> None:
         """Register a record and re-render (display == records is guaranteed)."""
         self._add_record(content, created_at, msg_type, message_id)
         self._rerender()
 
-    def append_history(self, records):
+    def append_history(self, records: list[tuple]) -> None:
         """Bulk-register records (one re-render at the end).
 
         records: iterable of (content, created_at, msg_type, message_id).
@@ -182,12 +182,12 @@ class MessageLog(QTextBrowser):
             self._add_record(content, created_at, msg_type, message_id)
         self._rerender()
 
-    def reset_log(self):
+    def reset_log(self) -> None:
         """Clear records and the display (for history reload / reconnect)."""
         self._records.clear()
         self.clear()   # explicit clear since _rerender does not run on empty history
 
-    def update_message(self, message_id, content, msg_type, created_at=None):
+    def update_message(self, message_id: int, content: str, msg_type: str, created_at=None) -> None:
         """In-place update of a known message id; append if unknown."""
         if message_id in self._records:
             rec = self._records[message_id]
@@ -197,7 +197,7 @@ class MessageLog(QTextBrowser):
         else:
             self.append_message(content, created_at, msg_type, message_id)
 
-    def _rerender(self):
+    def _rerender(self) -> None:
         """Rebuild the whole display from _records, preserving scroll position."""
         sb = self.verticalScrollBar()
         prev_auto, prev_val = self._auto_scroll, sb.value()
@@ -508,7 +508,7 @@ class MainWindow(QMainWindow):
         local_time = created_at.astimezone()
         self._last_msg_label.setText(f"Last msg: {local_time.strftime('%H:%M')}")
 
-    def _on_history_loading(self):
+    def _on_history_loading(self) -> None:
         """History load started (incl. reconnect): rearm the edit buffer."""
         self._history_loaded = False
 
@@ -531,7 +531,7 @@ class MainWindow(QMainWindow):
         for ed in pending:
             self._on_message_edited(ed)        # re-apply after history (in-place)
 
-    def _on_message_edited(self, msg_dict):
+    def _on_message_edited(self, msg_dict: dict) -> None:
         """Overwrite a log line only; panel/tray/last-msg label are untouched."""
         if not self._history_loaded:           # buffer during history load (startup/reconnect race)
             self._pending_edits.append(msg_dict)
