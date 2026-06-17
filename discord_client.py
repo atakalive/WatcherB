@@ -1,12 +1,16 @@
 """WatcherB Discord client — run discord.py in a QThread."""
 
 import asyncio
+import logging
+from datetime import datetime
 from typing import Optional
 
 import discord
 from PySide6.QtCore import QThread, Signal
 
 import config
+
+_logger = logging.getLogger(__name__)
 
 
 class DiscordThread(QThread):
@@ -19,6 +23,8 @@ class DiscordThread(QThread):
     message_received = Signal(dict)
     history_loaded = Signal(list)
     connection_changed = Signal(str)  # "connected" / "disconnected" / "reconnecting"
+    message_edited = Signal(dict)   # {"message_id", "content", "created_at"} created_at: datetime or None
+    history_loading = Signal()      # history load started (buffer rearm for reconnect race)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -58,6 +64,14 @@ class DiscordThread(QThread):
             self.message_received.emit(self._msg_to_dict(message))
 
         @self._client.event
+        async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
+            if payload.channel_id != config.CHANNEL_ID:
+                return
+            d = self._raw_edit_to_dict(payload)
+            if d is not None:
+                self.message_edited.emit(d)
+
+        @self._client.event
         async def on_disconnect():
             self.connection_changed.emit("disconnected")
 
@@ -75,21 +89,49 @@ class DiscordThread(QThread):
             self.connection_changed.emit("disconnected")
 
     async def _load_history(self):
-        """Fetch past messages on startup and emit."""
-        channel = self._client.get_channel(config.CHANNEL_ID)
-        if channel is None:
-            try:
+        """Fetch past messages on startup and emit.
+
+        Emits history_loading first (rearms the main-side edit buffer, also on
+        reconnect), then always emits history_loaded exactly once so the buffer
+        never stays stuck — even on failure (empty list).
+        """
+        self.history_loading.emit()   # first, before any await, to rearm the buffer
+        try:
+            channel = self._client.get_channel(config.CHANNEL_ID)
+            if channel is None:
                 channel = await self._client.fetch_channel(config.CHANNEL_ID)
-            except (discord.NotFound, discord.Forbidden):
-                return
-
-        messages = []
-        async for msg in channel.history(limit=config.HISTORY_LIMIT):
-            messages.append(self._msg_to_dict(msg))
-
-        # history() returns newest first, so reverse to chronological order
-        messages.reverse()
+            messages = []
+            async for msg in channel.history(limit=config.HISTORY_LIMIT):
+                messages.append(self._msg_to_dict(msg))
+            # history() returns newest first, so reverse to chronological order
+            messages.reverse()
+        except Exception:
+            # On any failure, emit an empty history so the pending buffer is released.
+            # (asyncio.CancelledError is a BaseException, not caught here, so shutdown
+            # is not blocked.) Log a warning for diagnosis instead of swallowing.
+            _logger.warning("Failed to load channel history; emitting empty history", exc_info=True)
+            self.history_loaded.emit([])
+            return
         self.history_loaded.emit(messages)
+
+    @staticmethod
+    def _raw_edit_to_dict(payload: "discord.RawMessageUpdateEvent") -> Optional[dict]:
+        """Convert a raw MESSAGE_UPDATE payload to a dict (Qt/network independent)."""
+        content = payload.data.get("content")
+        if not content:  # body unchanged / embed-only edit -> None/empty. Not our target
+            return None
+        created_at = None
+        cached = payload.cached_message
+        if cached is not None:
+            created_at = cached.created_at
+        else:
+            ts = payload.data.get("edited_timestamp")
+            if ts:
+                try:
+                    created_at = datetime.fromisoformat(ts)
+                except (ValueError, TypeError):
+                    created_at = None
+        return {"message_id": payload.message_id, "content": content, "created_at": created_at}
 
     @staticmethod
     def _msg_to_dict(message: discord.Message) -> dict:

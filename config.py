@@ -62,13 +62,22 @@ COLORS = {
     "peach": "#fab387",
 }
 
+# Progress notification markers (single source for classify + parse; see gokrax #383)
+PROGRESS_TOOL_MARKER = "tool calls"   # primary progress marker
+PROGRESS_INPROGRESS_MARKER = "in progress"   # in-progress sub-marker (used for finalized check)
+
 # Message type -> background color
 MSG_COLORS = {
     "transition": None,
     "blocked": "#5f1e1e",
     "done": "#1e3f2e",
     "info": None,
+    "progress": None,
 }
+
+# Live log record cap (separate concept from HISTORY_LIMIT, the fetch count at startup).
+# Effective cap is computed at the use site as max(HISTORY_LIMIT, LOG_RECORD_LIMIT).
+LOG_RECORD_LIMIT: int = int(os.getenv("LOG_RECORD_LIMIT", "200"))  # live-display record cap
 
 # Pipeline state -> progress percentage (%)
 STATE_PROGRESS = {

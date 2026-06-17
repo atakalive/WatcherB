@@ -5,6 +5,7 @@ import logging
 import re
 import sys
 import time
+from collections import OrderedDict
 
 from PySide6.QtCore import QEvent, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QShortcut
@@ -108,13 +109,20 @@ class MessageLog(QTextBrowser):
         self.setReadOnly(True)
         self.setOpenExternalLinks(True)
         self._auto_scroll = True
+        # key -> {"content", "created_at", "msg_type"}. All messages are kept as
+        # records and the display is always rebuilt from them (display == _records).
+        self._records: "OrderedDict[int, dict]" = OrderedDict()
+        # negative keys for keyless appends (never collide with real Discord ids)
+        self._synthetic_counter = 0
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_value_changed)
         self.verticalScrollBar().rangeChanged.connect(self._on_range_changed)
 
-    def append_message(self, content: str, created_at, msg_type: str):
-        """Append a color-coded message entry to the log."""
-        local_time = created_at.astimezone()
-        time_str = local_time.strftime("%H:%M")
+    def _render_block(self, content, created_at, msg_type) -> str:
+        """Build the HTML table block for a single record."""
+        if created_at is not None:
+            time_str = created_at.astimezone().strftime("%H:%M")
+        else:
+            time_str = ""
 
         subtext = config.COLORS["subtext"]
         text_color = config.COLORS["text"]
@@ -145,10 +153,61 @@ class MessageLog(QTextBrowser):
                     f"</tr>"
                 )
 
-        html_block = (
-            f'<table cellpadding="0" cellspacing="0" width="100%">{rows}</table>'
-        )
-        self.append(html_block)
+        return f'<table cellpadding="0" cellspacing="0" width="100%">{rows}</table>'
+
+    def _add_record(self, content, created_at, msg_type, message_id=None):
+        """Register a record (assign key + evict), without re-rendering."""
+        key = message_id
+        if key is None:
+            self._synthetic_counter -= 1   # negative key for keyless/test paths
+            key = self._synthetic_counter
+        self._records[key] = {"content": content, "created_at": created_at, "msg_type": msg_type}
+        # Compute the effective cap at the use site so that even if config.reload()
+        # raises HISTORY_LIMIT above LOG_RECORD_LIMIT, effective_cap >= HISTORY_LIMIT holds.
+        cap = max(config.HISTORY_LIMIT, config.LOG_RECORD_LIMIT)
+        while len(self._records) > cap:
+            self._records.popitem(last=False)   # evict oldest (display == records always)
+
+    def append_message(self, content: str, created_at, msg_type: str, message_id=None):
+        """Register a record and re-render (display == records is guaranteed)."""
+        self._add_record(content, created_at, msg_type, message_id)
+        self._rerender()
+
+    def append_history(self, records):
+        """Bulk-register records (one re-render at the end).
+
+        records: iterable of (content, created_at, msg_type, message_id).
+        """
+        for content, created_at, msg_type, message_id in records:
+            self._add_record(content, created_at, msg_type, message_id)
+        self._rerender()
+
+    def reset_log(self):
+        """Clear records and the display (for history reload / reconnect)."""
+        self._records.clear()
+        self.clear()   # explicit clear since _rerender does not run on empty history
+
+    def update_message(self, message_id, content, msg_type, created_at=None):
+        """In-place update of a known message id; append if unknown."""
+        if message_id in self._records:
+            rec = self._records[message_id]
+            rec["content"] = content
+            rec["msg_type"] = msg_type   # keep original created_at (display time stays put)
+            self._rerender()
+        else:
+            self.append_message(content, created_at, msg_type, message_id)
+
+    def _rerender(self):
+        """Rebuild the whole display from _records, preserving scroll position."""
+        sb = self.verticalScrollBar()
+        prev_auto, prev_val = self._auto_scroll, sb.value()
+        sb.blockSignals(True)
+        try:
+            self.setHtml("".join(self._render_block(**r) for r in self._records.values()))
+            sb.setValue(sb.maximum() if prev_auto else min(prev_val, sb.maximum()))
+        finally:
+            sb.blockSignals(False)
+        self._auto_scroll = prev_auto
 
     def _on_scroll_value_changed(self, value: int):
         """Disable auto-scroll when user scrolls away from bottom."""
@@ -171,6 +230,8 @@ class MainWindow(QMainWindow):
         self._status_unknown_streak = 0
         self._selected_project: str | None = None
         self._deactivated_at: float = 0.0
+        self._history_loaded = False
+        self._pending_edits: list[dict] = []
         self._setup_ui()
         self._setup_shortcuts()
         self._setup_tray()
@@ -391,6 +452,8 @@ class MainWindow(QMainWindow):
         self._discord_thread.message_received.connect(self._on_message_received)
         self._discord_thread.history_loaded.connect(self._on_history_loaded)
         self._discord_thread.connection_changed.connect(self._on_connection_changed)
+        self._discord_thread.message_edited.connect(self._on_message_edited)
+        self._discord_thread.history_loading.connect(self._on_history_loading)
         self._discord_thread.start()
 
     def _setup_status_monitor(self):
@@ -439,24 +502,46 @@ class MainWindow(QMainWindow):
         created_at = msg_dict["created_at"]
         msg_type = classify(content)
 
-        self._message_log.append_message(content, created_at, msg_type)
+        self._message_log.append_message(content, created_at, msg_type, msg_dict.get("message_id"))
         self._update_project_from_message(content, created_at, msg_type)
 
         local_time = created_at.astimezone()
         self._last_msg_label.setText(f"Last msg: {local_time.strftime('%H:%M')}")
 
+    def _on_history_loading(self):
+        """History load started (incl. reconnect): rearm the edit buffer."""
+        self._history_loaded = False
+
     def _on_history_loaded(self, messages: list):
+        self._message_log.reset_log()
+        log_records = []
         for msg_dict in messages:
             content = msg_dict["content"]
             created_at = msg_dict["created_at"]
             msg_type = classify(content)
-
-            self._message_log.append_message(content, created_at, msg_type)
+            log_records.append((content, created_at, msg_type, msg_dict.get("message_id")))
             self._update_project_from_message(content, created_at, msg_type)
+        self._message_log.append_history(log_records)   # bulk register + single _rerender
 
         if messages:
             local_time = messages[-1]["created_at"].astimezone()
             self._last_msg_label.setText(f"Last msg: {local_time.strftime('%H:%M')}")
+        self._history_loaded = True            # set even if messages is empty
+        pending, self._pending_edits = self._pending_edits, []
+        for ed in pending:
+            self._on_message_edited(ed)        # re-apply after history (in-place)
+
+    def _on_message_edited(self, msg_dict):
+        """Overwrite a log line only; panel/tray/last-msg label are untouched."""
+        if not self._history_loaded:           # buffer during history load (startup/reconnect race)
+            self._pending_edits.append(msg_dict)
+            return
+        content = msg_dict["content"]
+        if classify(content) != "progress":    # gokrax only PATCH-edits progress; ignore others
+            return
+        message_id = msg_dict["message_id"]
+        created_at = msg_dict.get("created_at")
+        self._message_log.update_message(message_id, content, "progress", created_at)
 
     def _update_project_from_message(self, content: str, created_at, msg_type: str):
         """Update project panel from state transition and info messages."""

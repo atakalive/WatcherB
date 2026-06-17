@@ -48,6 +48,15 @@ class TestConfigReload:
         config.reload(dotenv_path=env_file)
         assert config.FONT_SIZE == 20  # デフォルト値
 
+    def test_effective_cap_follows_history_limit_after_reload(self, tmp_path):
+        """reload で HISTORY_LIMIT が LOG_RECORD_LIMIT を上回っても実効上限が追随すること."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("HISTORY_LIMIT=300\n")
+        config.reload(dotenv_path=env_file)
+        assert config.HISTORY_LIMIT == 300
+        effective_cap = max(config.HISTORY_LIMIT, config.LOG_RECORD_LIMIT)
+        assert effective_cap >= config.HISTORY_LIMIT
+
     def test_reload_preserves_shell_env_vars(self, tmp_path):
         """シェル環境変数由来の設定が reload で破壊されないこと."""
         os.environ["FONT_SIZE"] = "24"
