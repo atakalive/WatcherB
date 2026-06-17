@@ -10,10 +10,12 @@ from discord_client import DiscordThread
 from issue_browser.gitlab_client import GitLabThread
 from status_monitor import (
     StatusMonitorThread,
+    _gcp_details,
     _normalize_gcp,
     _normalize_statuspage,
+    _statuspage_details,
 )
-from watcher import MainWindow
+from watcher import MainWindow, _build_status_tooltip, _status_page_links
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +233,20 @@ class TestFetchOne:
         assert result["level"] == "major"
         assert result["description"] == "down"
 
+    def test_statuspage_details_and_page_propagated(self):
+        thread = StatusMonitorThread()
+        resp = MagicMock()
+        resp.json.return_value = {
+            "status": {"indicator": "major", "description": "x"},
+            "components": [{"name": "API", "status": "major_outage"}],
+        }
+        resp.raise_for_status.return_value = None
+        thread._session.get = MagicMock(return_value=resp)
+        provider = {"key": "github", "name": "GitHub", "type": "statuspage", "url": "http://x"}
+        result = thread._fetch_one(provider)
+        assert result["details"] == [{"what": "API", "how": "Major Outage"}]
+        assert result["page"] == "http://x"
+
 
 # ---------------------------------------------------------------------------
 # D & E1. MainWindow slot + closeEvent wiring
@@ -245,8 +261,11 @@ def window(qtbot, monkeypatch):
     yield w
 
 
-def _status(key, name, level, description=""):
-    return {"key": key, "name": name, "level": level, "description": description}
+def _status(key, name, level, description="", page="", details=None):
+    return {
+        "key": key, "name": name, "level": level, "description": description,
+        "page": page, "details": details if details is not None else [],
+    }
 
 
 class TestOnStatusesUpdated:
@@ -455,3 +474,202 @@ class TestSleepInterruptible:
         # 途中で shutdown が立つと True を返し、それ以降は sleep しない
         assert thread._sleep_interruptible(100.0) is True
         assert len(sleep_calls) == 3
+
+
+# ---------------------------------------------------------------------------
+# F. _statuspage_details (pure function)
+# ---------------------------------------------------------------------------
+class TestStatuspageDetails:
+    def test_non_operational_components(self):
+        data = {"components": [
+            {"name": "API", "status": "partial_outage"},
+            {"name": "DB", "status": "degraded_performance"},
+        ]}
+        assert _statuspage_details(data) == [
+            {"what": "API", "how": "Partial Outage"},
+            {"what": "DB", "how": "Degraded Performance"},
+        ]
+
+    def test_operational_and_maintenance_excluded(self):
+        data = {"components": [
+            {"name": "A", "status": "operational"},
+            {"name": "B", "status": "under_maintenance"},
+            {"name": "C", "status": "major_outage"},
+        ]}
+        assert _statuspage_details(data) == [{"what": "C", "how": "Major Outage"}]
+
+    def test_unknown_status_excluded(self):
+        data = {"components": [{"name": "A", "status": "frobnicated"}]}
+        assert _statuspage_details(data) == []
+
+    def test_group_container_excluded(self):
+        data = {"components": [
+            {"name": "Parent", "status": "major_outage", "group": True},
+            {"name": "Child", "status": "major_outage"},
+        ]}
+        assert _statuspage_details(data) == [{"what": "Child", "how": "Major Outage"}]
+
+    def test_incident_fallback(self):
+        data = {
+            "components": [{"name": "A", "status": "operational"}],
+            "incidents": [{"name": "Elevated errors", "impact": "major"}],
+        }
+        assert _statuspage_details(data) == [{"what": "Elevated errors", "how": "Major"}]
+
+    def test_incident_impact_missing_or_unknown(self):
+        data = {"incidents": [
+            {"name": "X"},
+            {"name": "Y", "impact": "weird"},
+        ]}
+        assert _statuspage_details(data) == [
+            {"what": "X", "how": "Incident"},
+            {"what": "Y", "how": "Incident"},
+        ]
+
+    def test_resolved_incident_excluded(self):
+        data = {"incidents": [
+            {"name": "Old", "impact": "major", "status": "resolved"},
+            {"name": "Old2", "impact": "major", "status": "Postmortem"},
+            {"name": "Live", "impact": "minor", "status": "investigating"},
+        ]}
+        assert _statuspage_details(data) == [{"what": "Live", "how": "Minor"}]
+
+    def test_component_type_guards(self):
+        data = {"components": [
+            "not-a-dict",
+            {"name": 123, "status": "major_outage"},
+            {"name": "OK", "status": "major_outage"},
+        ]}
+        assert _statuspage_details(data) == [{"what": "OK", "how": "Major Outage"}]
+
+    def test_non_dict_and_empty(self):
+        assert _statuspage_details("nope") == []
+        assert _statuspage_details({}) == []
+
+
+# ---------------------------------------------------------------------------
+# G. _gcp_details (pure function)
+# ---------------------------------------------------------------------------
+class TestGcpDetails:
+    def test_ongoing_matched_incident(self):
+        incidents = [{
+            "end": None,
+            "external_desc": "Gemini is slow",
+            "affected_products": [{"title": "Gemini API"}, {"title": "Other"}],
+        }]
+        assert _gcp_details(incidents, ["Gemini"]) == [
+            {"what": "Gemini API", "how": "Gemini is slow"},
+        ]
+
+    def test_resolved_incident_excluded(self):
+        incidents = [{
+            "end": "2026-01-01T00:00:00Z",
+            "external_desc": "done",
+            "affected_products": [{"title": "Gemini"}],
+        }]
+        assert _gcp_details(incidents, ["Gemini"]) == []
+
+    def test_non_matching_product(self):
+        incidents = [{"end": None, "affected_products": [{"title": "BigQuery"}]}]
+        assert _gcp_details(incidents, ["Gemini"]) == []
+
+    def test_type_guards(self):
+        assert _gcp_details("nope", ["Gemini"]) == []
+        incidents = [{
+            "end": None,
+            "affected_products": [123, {"title": 5}, {"title": "Gemini"}],
+        }]
+        assert _gcp_details(incidents, ["Gemini"]) == [{"what": "Gemini", "how": ""}]
+
+    def test_multiple_matching_titles_joined(self):
+        incidents = [{
+            "end": None,
+            "external_desc": "x",
+            "affected_products": [{"title": "Gemini API"}, {"title": "Gemini Studio"}],
+        }]
+        assert _gcp_details(incidents, ["Gemini"]) == [
+            {"what": "Gemini API, Gemini Studio", "how": "x"},
+        ]
+
+    def test_whitespace_spanning_match_word(self):
+        incidents = [{
+            "end": None,
+            "external_desc": "x",
+            "affected_products": [{"title": "Vertex"}, {"title": "AI Platform"}],
+        }]
+        # joined "vertex ai platform" matches "vertex ai"; no single title contains it,
+        # so what falls back to all titles joined.
+        assert _gcp_details(incidents, ["Vertex AI"]) == [
+            {"what": "Vertex, AI Platform", "how": "x"},
+        ]
+
+
+# ---------------------------------------------------------------------------
+# H. _build_status_tooltip / _status_page_links (pure functions)
+# ---------------------------------------------------------------------------
+class TestBuildStatusTooltip:
+    def test_renders_what_how_rows(self):
+        down = [_status("a", "Claude", "minor", details=[
+            {"what": "API", "how": "Partial Outage"},
+        ])]
+        tip = _build_status_tooltip(down)
+        assert "<b>Claude</b>" in tip
+        assert "API: Partial Outage" in tip
+
+    def test_empty_how_renders_what_only(self):
+        down = [_status("a", "Claude", "minor", details=[{"what": "API", "how": ""}])]
+        tip = _build_status_tooltip(down)
+        assert "API" in tip
+        assert "API:" not in tip
+
+    def test_description_fallback(self):
+        down = [_status("a", "Claude", "minor", description="something broke")]
+        tip = _build_status_tooltip(down)
+        assert "something broke" in tip
+
+    def test_level_generic_fallback(self):
+        minor = _build_status_tooltip([_status("a", "Claude", "minor")])
+        major = _build_status_tooltip([_status("b", "OpenAI", "major")])
+        assert "Degraded" in minor
+        assert "Outage" in major
+
+    def test_long_how_truncated(self):
+        down = [_status("a", "Claude", "minor", details=[
+            {"what": "API", "how": "y" * 120},
+        ])]
+        tip = _build_status_tooltip(down)
+        assert "y" * 100 + "…" in tip
+        assert "y" * 101 not in tip
+
+    def test_long_fallback_description_truncated(self):
+        down = [_status("a", "Claude", "major", description="z" * 120)]
+        tip = _build_status_tooltip(down)
+        assert "z" * 100 + "…" in tip
+        assert "z" * 101 not in tip
+
+
+class TestStatusPageLinks:
+    def test_returns_only_providers_with_page(self):
+        down = [
+            _status("a", "Claude", "minor", page="https://claude.example"),
+            _status("b", "OpenAI", "major"),
+            _status("c", "GitHub", "minor", page=""),
+        ]
+        assert _status_page_links(down) == [("Claude", "https://claude.example")]
+
+
+class TestLlmDownCache:
+    def test_populated_on_down_poll(self, window):
+        down = [_status("a", "Claude", "minor", "x")]
+        window._on_statuses_updated(list(down))
+        assert window._llm_down == down
+
+    def test_reset_on_all_ok(self, window):
+        window._on_statuses_updated([_status("a", "Claude", "minor", "x")])
+        window._on_statuses_updated([_status("a", "Claude", "ok")])
+        assert window._llm_down == []
+
+    def test_reset_on_all_unknown(self, window):
+        window._on_statuses_updated([_status("a", "Claude", "minor", "x")])
+        window._on_statuses_updated([_status("a", "Claude", "unknown")])
+        assert window._llm_down == []

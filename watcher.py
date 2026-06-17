@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSplitter,
@@ -42,6 +43,52 @@ _logger = logging.getLogger(__name__)
 def _truncate(text: str, limit: int = 100) -> str:
     """ツールチップ用に長文 description を切り詰める（pascal R1 P2-5 対応）。"""
     return text if len(text) <= limit else text[:limit] + "…"
+
+
+def _build_status_tooltip(down: list[dict]) -> str:
+    """劣化中プロバイダ一覧を HTML ツールチップ文字列に整形する純関数。
+
+    プロバイダ毎に太字の name、その下に "what: how" のインデント行を並べる。
+    details が空のときは description → level 別の汎用語（minor→"Degraded" / major→"Outage"）の順で
+    フォールバックし、必ず 1 行は出す。how（およびフォールバック文）は html.escape + _truncate を通す。
+    全体を inline font-size の <span> で包む（QLabel ツールチップは inline font-size を尊重する）。
+    """
+    lines: list[str] = []
+    for s in down:
+        name = html.escape(str(s.get("name", "")))
+        lines.append(f"<b>{name}</b>")
+        rows: list[str] = []
+        details = s.get("details")
+        if isinstance(details, list):
+            for d in details:
+                if not isinstance(d, dict):
+                    continue
+                what = html.escape(str(d.get("what", "")))
+                how = html.escape(_truncate(str(d.get("how", ""))))
+                if what and how:
+                    rows.append(f"&nbsp;&nbsp;{what}: {how}")
+                elif what or how:
+                    # how 欠落時は末尾コロンを出さず what のみ（pascal P2-1）。両方空の行は出さない。
+                    rows.append(f"&nbsp;&nbsp;{what or how}")
+        if not rows:
+            desc = s.get("description") or ("Degraded" if s.get("level") == "minor" else "Outage")
+            rows.append(f"&nbsp;&nbsp;{html.escape(_truncate(str(desc)))}")
+        lines.extend(rows)
+    body = "<br>".join(lines)
+    return f'<span style="font-size:{config.TOOLTIP_FONT_PX}px">{body}</span>'
+
+
+def _status_page_links(down: list[dict]) -> list[tuple[str, str]]:
+    """down のうち空でない page を持つものを [(name, page), ...] で返す。
+
+    メニュー構築ロジックを modal exec 無しで単体テストできるよう、リンク抽出を切り出す。
+    """
+    links: list[tuple[str, str]] = []
+    for s in down:
+        page = s.get("page")
+        if page:
+            links.append((str(s.get("name", "")), str(page)))
+    return links
 
 
 # Alternation order: longer patterns before shorter ones (longest-match-first).
@@ -228,6 +275,7 @@ class MainWindow(QMainWindow):
         self._force_quit = False
         self._status_thread = None
         self._status_unknown_streak = 0
+        self._llm_down: list[dict] = []   # 現在劣化中のプロバイダ（コンテキストメニュー用）
         self._selected_project: str | None = None
         self._deactivated_at: float = 0.0
         self._history_loaded = False
@@ -347,10 +395,12 @@ class MainWindow(QMainWindow):
         self._last_msg_label = QLabel("")
         self._llm_status_label = QLabel("")
         self._llm_status_label.hide()
+        self._llm_status_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._llm_status_label.customContextMenuRequested.connect(self._on_llm_status_menu)
         status_bar = QStatusBar()
         status_bar.addWidget(self._status_label)
+        status_bar.addWidget(self._llm_status_label)
         status_bar.addPermanentWidget(self._last_msg_label)
-        status_bar.addPermanentWidget(self._llm_status_label)
         self.setStatusBar(status_bar)
 
         # Signal connections (after tab bar hidden + all tabs added — §6.3)
@@ -472,12 +522,12 @@ class MainWindow(QMainWindow):
             has_major = any(s["level"] == "major" for s in down)
             color = config.COLORS["red"] if has_major else config.COLORS["yellow"]
             self._llm_status_label.setStyleSheet(f"color: {color};")
-            self._llm_status_label.setToolTip(
-                "\n".join(f"{s['name']}: {_truncate(s['description'])}" for s in down)
-            )
+            self._llm_down = down
+            self._llm_status_label.setToolTip(_build_status_tooltip(down))
             self._llm_status_label.show()
             return
         # down が無い: 全プロバイダ ok/unknown
+        self._llm_down = []
         if statuses and all(s["level"] == "unknown" for s in statuses):
             self._status_unknown_streak += 1
         else:
@@ -771,6 +821,17 @@ class MainWindow(QMainWindow):
         )
         QDesktopServices.openUrl(QUrl(url))
 
+    def _on_llm_status_menu(self, pos) -> None:
+        """劣化中プロバイダの status page を開くコンテキストメニュー。"""
+        links = _status_page_links(self._llm_down)
+        if not links:
+            return
+        menu = QMenu(self)
+        action_url = {menu.addAction(f"Open {name} status page"): url for name, url in links}
+        chosen = menu.exec(self._llm_status_label.mapToGlobal(pos))
+        if chosen is not None and chosen in action_url:
+            QDesktopServices.openUrl(QUrl(action_url[chosen]))
+
     def _on_issue_double_clicked(self, iid: int) -> None:
         """Set qadd command text for the double-clicked issue."""
         if self._send_input is None:
@@ -931,6 +992,12 @@ def _build_global_qss() -> str:
         QListWidget::item:selected {{
             background-color: {c["accent"]};
             color: {c["bg"]};
+        }}
+        QToolTip {{
+            background-color: {c["surface"]};
+            color: {c["text"]};
+            border: 1px solid {c["subtext"]};
+            font-size: {config.TOOLTIP_FONT_PX}px;
         }}
     """
 

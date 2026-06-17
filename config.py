@@ -104,6 +104,7 @@ FONT_FAMILY: str = os.getenv("FONT_FAMILY", "Consolas, Cascadia Code, Noto Sans 
 FONT_SIZE: int = int(os.getenv("FONT_SIZE", "20"))
 FONT_SIZE_TIMESTAMP: int = 3  # Timestamp font size (px)
 FONT_SIZE_STATUS: int = 20   # Status bar font size (px)
+TOOLTIP_FONT_PX: int = 15   # Tooltip font (px). App uses 20px; 15 is a clear bump over the tiny OS default while staying secondary.
 LINE_HEIGHT: float = float(os.getenv("LINE_HEIGHT", "2.3"))
 
 # reload() で管理するキー一覧
@@ -249,5 +250,6 @@ STATUS_PROVIDERS: list[dict] = [
     {"key": "moonshot",  "name": "Kimi",     "type": "statuspage", "url": "https://status.moonshot.cn"},
     {"key": "google",    "name": "Gemini",   "type": "gcp",
      "url": "https://status.cloud.google.com/incidents.json",
+     "page": "https://status.cloud.google.com",
      "match": ["Gemini", "Vertex"]},
 ]
